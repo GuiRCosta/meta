@@ -7,8 +7,6 @@ services:
       dockerfile: Dockerfile
     container_name: meta-campaigns-frontend
     restart: unless-stopped
-    ports:
-      - "3000:3000"
     environment:
       # Supabase Database
       - DATABASE_URL=${DATABASE_URL}
@@ -24,13 +22,47 @@ services:
       backend:
         condition: service_healthy
     networks:
-      - meta-network
+      - idevanet # Rede externa (Traefik)
+      - meta-network # Rede interna
+    labels:
+      # Traefik labels para roteamento automático
+      - "traefik.enable=true"
+      - "traefik.docker.network=idevanet"
+
+      # Router HTTP (redireciona para HTTPS)
+      - "traefik.http.routers.meta-frontend-http.rule=Host(`${DOMAIN:-meta.localhost}`)"
+      - "traefik.http.routers.meta-frontend-http.entrypoints=web"
+      - "traefik.http.routers.meta-frontend-http.middlewares=redirect-to-https"
+
+      # Router HTTPS
+      - "traefik.http.routers.meta-frontend.rule=Host(`${DOMAIN:-meta.localhost}`)"
+      - "traefik.http.routers.meta-frontend.entrypoints=websecure"
+      - "traefik.http.routers.meta-frontend.tls=true"
+      - "traefik.http.routers.meta-frontend.tls.certresolver=letsencrypt"
+
+      # Service
+      - "traefik.http.services.meta-frontend.loadbalancer.server.port=3000"
+
+      # Middleware para redirecionar HTTP → HTTPS
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/auth/session"]
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:3000/api/auth/session" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2048M
+        reservations:
+          cpus: "1"
+          memory: 1024M
 
   backend:
     build:
@@ -38,31 +70,56 @@ services:
       dockerfile: Dockerfile
     container_name: meta-campaigns-backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
     environment:
       # OpenAI (obrigatório para agentes)
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       # Meta Ads API
-      - META_ACCESS_TOKEN=${META_ACCESS_TOKEN}
-      - META_AD_ACCOUNT_ID=${META_AD_ACCOUNT_ID}
+      - META_ACCESS_TOKEN=${META_ACCESS_TOKEN:-}
+      - META_AD_ACCOUNT_ID=${META_AD_ACCOUNT_ID:-}
       # Evolution API (WhatsApp)
       - EVOLUTION_API_URL=${EVOLUTION_API_URL}
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
-      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE}
+      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-default}
       # Database
       - DATABASE_URL=${DATABASE_URL}
       # CORS
       - FRONTEND_URL=${FRONTEND_URL}
     networks:
-      - meta-network
+      - meta-network # Rede interna (comunicação com frontend)
+      - idevanet # Rede externa (caso queira expor API)
+    labels:
+      # Traefik labels (opcional - descomente se quiser expor o backend)
+      - "traefik.enable=false"
+      # Para expor backend em api.seudominio.com, mude para true e descomente abaixo:
+      # - "traefik.enable=true"
+      # - "traefik.docker.network=idevanet"
+      # - "traefik.http.routers.meta-backend.rule=Host(`api.${DOMAIN:-meta.localhost}`)"
+      # - "traefik.http.routers.meta-backend.entrypoints=websecure"
+      # - "traefik.http.routers.meta-backend.tls=true"
+      # - "traefik.http.routers.meta-backend.tls.certresolver=letsencrypt"
+      # - "traefik.http.services.meta-backend.loadbalancer.server.port=8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2048M
+        reservations:
+          cpus: "1"
+          memory: 1024M
 
 networks:
   meta-network:
     driver: bridge
+    internal: true # Rede interna apenas
+  idevanet:
+    external: true
+    name: idevanet

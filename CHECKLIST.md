@@ -16,8 +16,9 @@
 | **Backend APIs (Next.js)** | ✅ | 12/12 endpoints funcionais |
 | **Backend Python (Agno)** | ✅ | 5 agentes + 18 tools + 11 endpoints |
 | **Database (Supabase)** | ✅ | 9 tabelas + RLS + Storage |
-| **Integrações Externas** | 🟡 | Código pronto, falta configurar credenciais |
-| **Docker/Deploy** | 🟡 | Arquivos criados, falta deploy |
+| **Evolution API (WhatsApp)** | ✅ | Instalado na VPS, falta apenas configurar |
+| **Integrações Externas** | 🟡 | Meta Ads API opcional (pode usar dados mock) |
+| **Docker/Deploy** | 🟡 | Arquivos prontos, falta deploy na VPS |
 
 ---
 
@@ -184,7 +185,7 @@ backend/
 | ✅ | get_campaign_insights | Tool do Analisador | Implementado |
 | 🟡 | Credenciais | `.env` | **Falta configurar** |
 
-### Evolution API (WhatsApp) 🟡 CÓDIGO PRONTO
+### Evolution API (WhatsApp) ✅ SELF-HOSTED NA VPS
 
 | Status | Item | Arquivo | Observação |
 |--------|------|---------|------------|
@@ -192,7 +193,8 @@ backend/
 | ✅ | send_whatsapp_message | Tool do Notificador | Implementado |
 | ✅ | send_daily_report | Tool do Notificador | Implementado |
 | ✅ | send_alert | Tool do Notificador | Implementado |
-| 🟡 | Credenciais | `.env` | **Falta configurar** |
+| ✅ | Evolution API Instalado | VPS | **Já está rodando!** |
+| 🟡 | Configurar credenciais | `.env` | **Falta apenas URL + Key** |
 
 ---
 
@@ -273,16 +275,19 @@ docker logs meta-campaigns-backend
 4. Configurar variáveis de ambiente
 5. Deploy the stack
 
-### Configurações Pendentes
+### Configurações Pendentes para MVP Funcional
 
-| Prioridade | Item | Tempo Estimado |
-|------------|------|----------------|
-| 🔴 | Criar arquivo `.env` na VPS | 5 min |
-| 🔴 | Obter `OPENAI_API_KEY` | 5 min |
-| 🟡 | Configurar Meta Ads API | 30 min |
-| 🟡 | Configurar Evolution API | 30 min |
-| 🟢 | Configurar Traefik/Nginx para SSL | 30 min |
-| 🟢 | Deploy via Portainer na VPS | 15 min |
+| Prioridade | Item | Tempo Estimado | Status |
+|------------|------|----------------|--------|
+| 🔴 | Obter `OPENAI_API_KEY` | 5 min | ❌ Crítico |
+| 🔴 | Criar arquivo `.env` na VPS | 5 min | ❌ Crítico |
+| 🔴 | Configurar Evolution API no `.env` | 2 min | ❌ Crítico (URL + Key + Instance) |
+| 🔴 | Deploy via Docker (`docker-compose up -d`) | 10 min | ❌ Crítico |
+| 🟡 | Configurar Nginx/Traefik para acesso externo | 15 min | ⚠️ Recomendado |
+| 🟡 | Configurar SSL (Let's Encrypt) | 10 min | ⚠️ Recomendado |
+| 🟢 | Configurar Meta Ads API (opcional no MVP) | 30 min | ⏳ Pode esperar |
+
+**TOTAL para MVP funcional**: ~20-30 minutos (apenas itens críticos)
 
 ---
 
@@ -428,36 +433,43 @@ agente-meta-campanhas/
 ```
 Frontend UI:        ████████████████████████ 100%
 Backend Next.js:    ████████████████████████ 100%
-Backend Python:     ██████████████████████░░ 90%
+Backend Python:     ████████████████████████ 100%
 Database:           ████████████████████████ 100%
-Integrações:        ████████████████░░░░░░░░ 70% (código pronto, falta config)
-Docker/Deploy:      ██████████████████░░░░░░ 75% (arquivos prontos, falta deploy)
+Evolution API:      ███████████████████████░ 95% (instalado, falta config)
+Docker/Deploy:      ████████████████████░░░░ 85% (arquivos prontos, falta deploy)
 
-TOTAL:              █████████████████████░░░ 90%
+TOTAL:              ███████████████████████░ 95%
 ```
 
 ---
 
-## ✅ O QUE ESTÁ PRONTO
+## ✅ O QUE ESTÁ PRONTO (95%)
 
 - [x] Frontend completo (13 páginas)
 - [x] Backend Next.js (12 endpoints)
 - [x] Backend Python com Agno (5 agentes, 18 tools)
 - [x] Database Supabase (9 tabelas, RLS, Storage)
+- [x] Evolution API instalado e rodando na VPS
 - [x] Dockerfiles (frontend + backend)
 - [x] Docker Compose
 - [x] Health checks
 - [x] Documentação
 
-## 🔜 O QUE FALTA
+## 🔴 O QUE FALTA PARA MVP 100% FUNCIONAL (5%)
 
-- [ ] Criar arquivo `.env` com credenciais reais
-- [ ] Obter `OPENAI_API_KEY`
-- [ ] Configurar Meta Ads API (opcional)
-- [ ] Configurar Evolution API (opcional)
-- [ ] Deploy na VPS via Portainer
-- [ ] Configurar reverse proxy + SSL
+### Crítico (20-30 min)
+- [ ] Obter `OPENAI_API_KEY` (https://platform.openai.com/api-keys)
+- [ ] Criar arquivo `.env` com credenciais
+- [ ] Configurar Evolution API no `.env` (URL + Key + Instance)
+- [ ] Deploy na VPS via Docker (`docker-compose up -d`)
+
+### Recomendado (25 min)
+- [ ] Configurar Nginx/Traefik (acesso via domínio)
+- [ ] Configurar SSL/HTTPS (Let's Encrypt)
+
+### Opcional (pode esperar)
+- [ ] Configurar Meta Ads API (MVP funciona com dados mock)
 
 ---
 
-*Última atualização: 13/01/2026 - Arquivos Docker criados*
+*Última atualização: 19/01/2026 - Evolution API confirmado instalado na VPS*
