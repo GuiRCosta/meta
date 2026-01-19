@@ -1,0 +1,253 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// AUTH MODELS
+// ==========================================
+
+// User model for authentication
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  password      String
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  
+  settings      Settings?
+  campaigns     Campaign[]
+  alerts        Alert[]
+  agentSessions AgentSession[]
+
+  @@map("users")
+}
+
+// ==========================================
+// SETTINGS
+// ==========================================
+
+// User settings
+model Settings {
+  id                    String   @id @default(uuid()) @db.Uuid
+  userId                String   @unique @map("user_id") @db.Uuid
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Budget settings
+  monthlyBudgetLimit    Float    @default(5000) @map("monthly_budget_limit")
+  alertAt50Percent      Boolean  @default(true) @map("alert_at_50_percent")
+  alertAt80Percent      Boolean  @default(true) @map("alert_at_80_percent")
+  alertAt100Percent     Boolean  @default(true) @map("alert_at_100_percent")
+  alertOnProjectedOverrun Boolean @default(true) @map("alert_on_projected_overrun")
+  
+  // Goals
+  conversionGoal        Int?     @map("conversion_goal")
+  roasGoal              Float?   @map("roas_goal")
+  cpcMaxLimit           Float?   @map("cpc_max_limit")
+  ctrMinLimit           Float?   @map("ctr_min_limit")
+  
+  // WhatsApp settings (Evolution API)
+  whatsappEnabled       Boolean  @default(false) @map("whatsapp_enabled")
+  whatsappNumber        String?  @map("whatsapp_number")
+  dailyReportTime       String   @default("18:00") @map("daily_report_time")
+  sendDailyReports      Boolean  @default(true) @map("send_daily_reports")
+  sendImmediateAlerts   Boolean  @default(true) @map("send_immediate_alerts")
+  sendSuggestions       Boolean  @default(true) @map("send_suggestions")
+  sendStatusChanges     Boolean  @default(true) @map("send_status_changes")
+  
+  // Meta API settings
+  metaAccessToken       String?  @map("meta_access_token")
+  metaAdAccountId       String?  @map("meta_ad_account_id")
+  metaPageId            String?  @map("meta_page_id")
+  
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+// ==========================================
+// CAMPAIGNS & ADS
+// ==========================================
+
+// Campaign synced from Meta
+model Campaign {
+  id              String           @id @default(uuid()) @db.Uuid
+  metaId          String           @unique @map("meta_id")
+  userId          String           @map("user_id") @db.Uuid
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name            String
+  objective       String
+  status          String           @default("PAUSED")
+  dailyBudget     Float?           @map("daily_budget")
+  lifetimeBudget  Float?           @map("lifetime_budget")
+  
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  
+  adSets          AdSet[]
+  metrics         CampaignMetric[]
+  
+  @@index([userId])
+  @@index([status])
+  @@map("campaigns")
+}
+
+// Ad Set within a Campaign
+model AdSet {
+  id           String   @id @default(uuid()) @db.Uuid
+  metaId       String   @unique @map("meta_id")
+  campaignId   String   @map("campaign_id") @db.Uuid
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  
+  name         String
+  status       String   @default("PAUSED")
+  dailyBudget  Float?   @map("daily_budget")
+  
+  // Targeting (stored as JSON)
+  targeting    Json?
+  
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  
+  ads          Ad[]
+  
+  @@index([campaignId])
+  @@map("ad_sets")
+}
+
+// Ad within an Ad Set
+model Ad {
+  id          String   @id @default(uuid()) @db.Uuid
+  metaId      String   @unique @map("meta_id")
+  adSetId     String   @map("ad_set_id") @db.Uuid
+  adSet       AdSet    @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  
+  name        String
+  status      String   @default("PAUSED")
+  
+  // Creative (stored as JSON)
+  creative    Json?
+  
+  // Media (uploaded to Supabase Storage)
+  mediaUrl    String?  @map("media_url")
+  mediaType   String?  @map("media_type") // image, video
+  mediaHash   String?  @map("media_hash") // Meta image_hash or video_id
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@index([adSetId])
+  @@map("ads")
+}
+
+// ==========================================
+// METRICS
+// ==========================================
+
+// Daily metrics for campaigns
+model CampaignMetric {
+  id           String   @id @default(uuid()) @db.Uuid
+  campaignId   String   @map("campaign_id") @db.Uuid
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  
+  date         DateTime @db.Date
+  impressions  Int      @default(0)
+  clicks       Int      @default(0)
+  spend        Float    @default(0)
+  conversions  Int      @default(0)
+  reach        Int      @default(0)
+  
+  // Calculated metrics
+  cpc          Float?
+  ctr          Float?
+  cpm          Float?
+  roas         Float?
+  
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  @@unique([campaignId, date])
+  @@index([campaignId])
+  @@index([date])
+  @@map("campaign_metrics")
+}
+
+// Monthly spending summary
+model MonthlySummary {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  month           Int      // 1-12
+  year            Int
+  
+  totalSpend      Float    @default(0) @map("total_spend")
+  totalImpressions Int     @default(0) @map("total_impressions")
+  totalClicks     Int      @default(0) @map("total_clicks")
+  totalConversions Int     @default(0) @map("total_conversions")
+  avgCpc          Float?   @map("avg_cpc")
+  avgCtr          Float?   @map("avg_ctr")
+  avgRoas         Float?   @map("avg_roas")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  @@unique([userId, month, year])
+  @@index([userId])
+  @@map("monthly_summaries")
+}
+
+// ==========================================
+// ALERTS & NOTIFICATIONS
+// ==========================================
+
+// Alerts and notifications
+model Alert {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type         String   // error, warning, info, success
+  priority     String   // high, medium, low
+  title        String
+  message      String
+  campaignId   String?  @map("campaign_id")
+  campaignName String?  @map("campaign_name")
+  
+  read         Boolean  @default(false)
+  sentViaWhatsApp Boolean @default(false) @map("sent_via_whatsapp")
+  
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  @@index([userId])
+  @@index([read])
+  @@map("alerts")
+}
+
+// ==========================================
+// AI AGENT
+// ==========================================
+
+// Agent chat sessions
+model AgentSession {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title     String?
+  messages  Json     @default("[]")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@index([userId])
+  @@map("agent_sessions")
+}

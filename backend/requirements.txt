@@ -1,0 +1,25 @@
+# FastAPI & Server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.18
+python-dotenv==1.0.1
+
+# Agno - Multi-Agent Framework
+agno==1.2.6
+openai==1.59.3
+
+# Database
+asyncpg==0.30.0
+sqlalchemy[asyncio]==2.0.36
+psycopg2-binary==2.9.10
+
+# HTTP Client
+httpx==0.28.1
+aiohttp==3.11.11
+
+# Utilities
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# Meta API
+facebook-business==21.0.3
