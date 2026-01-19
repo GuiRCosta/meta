@@ -79,6 +79,16 @@ const alerts = [
   },
 ];
 
+interface MetricCardProps {
+  title: string;
+  value: string | number;
+  icon: React.ElementType;
+  trend?: 'up' | 'down';
+  trendValue?: string;
+  suffix?: string;
+  className?: string;
+}
+
 function MetricCard({
   title,
   value,
@@ -86,26 +96,19 @@ function MetricCard({
   trend,
   trendValue,
   suffix,
-}: {
-  title: string;
-  value: string | number;
-  icon: React.ElementType;
-  trend?: 'up' | 'down';
-  trendValue?: string;
-  suffix?: string;
-}) {
+  className,
+}: MetricCardProps) {
   return (
-    <Card className="bg-card border-border/50">
-      <CardContent className="p-6">
+    <Card className={`bg-card border-border/50 ${className || ''}`}>
+      <CardContent className="p-6 h-full flex flex-col justify-between">
         <div className="flex items-center justify-between">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
             <Icon className="h-5 w-5 text-primary" />
           </div>
           {trend && (
             <div
-              className={`flex items-center gap-1 text-sm ${
-                trend === 'up' ? 'text-success' : 'text-destructive'
-              }`}
+              className={`flex items-center gap-1 text-sm ${trend === 'up' ? 'text-success' : 'text-destructive'
+                }`}
             >
               {trend === 'up' ? (
                 <TrendingUp className="h-4 w-4" />
@@ -128,12 +131,12 @@ function MetricCard({
   );
 }
 
-function BudgetCard() {
+function BudgetCard({ className }: { className?: string }) {
   const percentage = (stats.monthSpend / stats.monthLimit) * 100;
   const projectionSafe = stats.projectedSpend <= stats.monthLimit;
 
   return (
-    <Card className="bg-card border-border/50">
+    <Card className={`bg-card border-border/50 flex flex-col justify-between ${className || ''}`}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base font-medium">
@@ -160,26 +163,24 @@ function BudgetCard() {
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Progresso</span>
             <span
-              className={`font-medium ${
-                percentage >= 80
-                  ? 'text-destructive'
-                  : percentage >= 50
+              className={`font-medium ${percentage >= 80
+                ? 'text-destructive'
+                : percentage >= 50
                   ? 'text-warning'
                   : 'text-success'
-              }`}
+                }`}
             >
               {percentage.toFixed(0)}%
             </span>
           </div>
           <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className={`h-full transition-all ${
-                percentage >= 80
-                  ? 'bg-destructive'
-                  : percentage >= 50
+              className={`h-full transition-all ${percentage >= 80
+                ? 'bg-destructive'
+                : percentage >= 50
                   ? 'bg-warning'
                   : 'bg-success'
-              }`}
+                }`}
               style={{ width: `${Math.min(percentage, 100)}%` }}
             />
           </div>
@@ -215,6 +216,7 @@ function BudgetCard() {
   );
 }
 
+
 function SpendingChart() {
   return (
     <Card className="bg-card border-border/50">
@@ -245,7 +247,7 @@ function SpendingChart() {
                   borderRadius: '8px',
                 }}
                 labelStyle={{ color: 'hsl(var(--foreground))' }}
-                formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Gasto']}
+                formatter={(value: any) => [`R$ ${Number(value).toFixed(2)}`, 'Gasto']}
               />
               <Line
                 type="monotone"
@@ -434,20 +436,22 @@ export default function DashboardPage() {
       {hasUrgentAlerts && <AlertsCard />}
 
       {/* Orçamento + Métricas Principais */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      {/* Orçamento + Métricas Principais */}
+      <div className="grid gap-6 lg:grid-cols-3 items-stretch">
         {/* Orçamento Mensal - 2 colunas */}
-        <div className="lg:col-span-2">
-          <BudgetCard />
+        <div className="lg:col-span-2 h-full">
+          <BudgetCard className="h-full" />
         </div>
-        
-        {/* Gasto Hoje + ROAS - 1 coluna */}
-        <div className="space-y-4">
+
+        {/* Gasto Hoje + ROAS - 1 coluna com Flex para ocupar altura total */}
+        <div className="flex flex-col gap-6 h-full">
           <MetricCard
             title="Gasto Hoje"
             value={`R$ ${stats.todaySpend.toFixed(0)}`}
             icon={DollarSign}
             trend="up"
             trendValue="+12%"
+            className="flex-1"
           />
           <MetricCard
             title="ROAS Médio"
@@ -456,6 +460,7 @@ export default function DashboardPage() {
             icon={TrendingUp}
             trend="up"
             trendValue="+22%"
+            className="flex-1"
           />
         </div>
       </div>

@@ -27,6 +27,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import {
   Search,
   Plus,
   RefreshCw,
@@ -37,7 +46,10 @@ import {
   Edit,
   Trash2,
   Filter,
+  Copy,
 } from 'lucide-react';
+import { toast } from 'sonner';
+
 import Link from 'next/link';
 
 // Mock data
@@ -167,6 +179,34 @@ export default function CampaignsPage() {
     setIsSyncing(true);
     await new Promise((resolve) => setTimeout(resolve, 2000));
     setIsSyncing(false);
+  };
+
+
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [duplicateCount, setDuplicateCount] = useState(1);
+
+  const handleDuplicateClick = (campaignId: string) => {
+    setSelectedCampaignId(campaignId);
+    setDuplicateCount(1);
+    setDuplicateDialogOpen(true);
+  };
+
+  const handleConfirmDuplicate = async () => {
+    // Feedback visual inicial
+    const toastId = toast.loading('Duplicando campanha...');
+    console.log(`Duplicando campanha ${selectedCampaignId} - ${duplicateCount} cópias`);
+
+    // Simulação de delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Sucesso
+    toast.success(`${duplicateCount} cópias criadas com sucesso!`, {
+      id: toastId,
+      description: 'As campanhas aparecerão na lista em instantes.'
+    });
+
+    setDuplicateDialogOpen(false);
   };
 
   const filteredCampaigns = campaigns.filter((campaign) => {
@@ -317,6 +357,10 @@ export default function CampaignsPage() {
                           <Edit className="mr-2 h-4 w-4" />
                           Editar
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleDuplicateClick(campaign.id)}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Duplicar
+                        </DropdownMenuItem>
                         {campaign.status === 'ACTIVE' ? (
                           <DropdownMenuItem>
                             <Pause className="mr-2 h-4 w-4" />
@@ -341,6 +385,46 @@ export default function CampaignsPage() {
           </Table>
         </CardContent>
       </Card>
-    </div>
+
+
+      <Dialog open={duplicateDialogOpen} onOpenChange={setDuplicateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Duplicar Campanha</DialogTitle>
+            <DialogDescription>
+              Quantas cópias desta campanha você deseja criar?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="copies" className="text-right">
+                Cópias
+              </Label>
+              <Input
+                id="copies"
+                type="number"
+                min={1}
+                max={10}
+                value={duplicateCount}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (isNaN(val)) return; // Allow empty briefly or handle differently? Actually just ignore invalid
+                  setDuplicateCount(Math.min(10, Math.max(1, val)));
+                }}
+                className="col-span-3"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDuplicateDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmDuplicate}>
+              Duplicar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div >
   );
 }
