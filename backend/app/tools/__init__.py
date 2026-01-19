@@ -8,6 +8,7 @@ from app.tools.meta_api import (
     create_campaign,
     update_campaign_status,
     get_campaign_insights,
+    duplicate_campaign,
 )
 from app.tools.database import (
     get_user_settings,
@@ -27,6 +28,7 @@ __all__ = [
     "create_campaign",
     "update_campaign_status",
     "get_campaign_insights",
+    "duplicate_campaign",
     # Database
     "get_user_settings",
     "get_alerts",

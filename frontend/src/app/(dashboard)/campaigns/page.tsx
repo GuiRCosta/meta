@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -34,7 +35,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
 import {
   Search,
   Plus,
@@ -52,86 +52,19 @@ import { toast } from 'sonner';
 
 import Link from 'next/link';
 
-// Mock data
-const campaigns = [
-  {
-    id: '1',
-    name: 'E-commerce Premium',
-    status: 'ACTIVE' as const,
-    objective: 'CONVERSIONS',
-    spend: 850,
-    impressions: 25500,
-    clicks: 890,
-    ctr: 3.5,
-    roas: 4.2,
-  },
-  {
-    id: '2',
-    name: 'Tráfego Site Principal',
-    status: 'ACTIVE' as const,
-    objective: 'TRAFFIC',
-    spend: 320,
-    impressions: 15000,
-    clicks: 420,
-    ctr: 2.8,
-    roas: null,
-  },
-  {
-    id: '3',
-    name: 'Conversões Q1 2024',
-    status: 'ACTIVE' as const,
-    objective: 'CONVERSIONS',
-    spend: 580,
-    impressions: 18500,
-    clicks: 390,
-    ctr: 2.1,
-    roas: 3.8,
-  },
-  {
-    id: '4',
-    name: 'Teste A - Público Jovem',
-    status: 'ACTIVE' as const,
-    objective: 'REACH',
-    spend: 200,
-    impressions: 45000,
-    clicks: 675,
-    ctr: 1.5,
-    roas: null,
-  },
-  {
-    id: '5',
-    name: 'Teste B - Remarketing',
-    status: 'ACTIVE' as const,
-    objective: 'TRAFFIC',
-    spend: 150,
-    impressions: 12500,
-    clicks: 150,
-    ctr: 1.2,
-    roas: 1.5,
-  },
-  {
-    id: '6',
-    name: 'Promo Verão 2024',
-    status: 'PAUSED' as const,
-    objective: 'CONVERSIONS',
-    spend: 0,
-    impressions: 0,
-    clicks: 0,
-    ctr: 0.8,
-    roas: 2.1,
-  },
-  {
-    id: '7',
-    name: 'Black Friday 2023',
-    status: 'PAUSED' as const,
-    objective: 'CONVERSIONS',
-    spend: 0,
-    impressions: 0,
-    clicks: 0,
-    ctr: 4.2,
-    roas: 5.8,
-  },
-];
+// Tipo para campanha
+interface Campaign {
+  id: string;
+  metaId?: string;
+  name: string;
+  status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
+  objective: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  roas?: number | null;
+}
 
 const getStatusBadge = (status: 'ACTIVE' | 'PAUSED') => {
   if (status === 'ACTIVE') {
@@ -171,20 +104,184 @@ const getCtrColor = (ctr: number) => {
 };
 
 export default function CampaignsPage() {
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [limit, setLimit] = useState(50);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+
+  // Buscar campanhas ao carregar e quando filtros mudarem
+  useEffect(() => {
+    fetchCampaigns();
+  }, [statusFilter, limit]);
+
+  // Buscar quando pesquisa mudar (com debounce)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchCampaigns();
+    }, 500); // Aguarda 500ms após parar de digitar
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const fetchCampaigns = async () => {
+    try {
+      setLoading(true);
+      // Construir URL com parâmetros
+      const params = new URLSearchParams();
+      if (statusFilter !== 'all') {
+        params.append('status', statusFilter);
+      }
+      if (searchQuery) {
+        params.append('search', searchQuery);
+      }
+      params.append('limit', limit.toString());
+      params.append('offset', '0');
+      
+      const response = await fetch(`/api/campaigns?${params.toString()}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData.error || errorData.details || 'Erro ao buscar campanhas';
+        console.error('Error fetching campaigns:', errorMsg);
+        toast.error(errorMsg);
+        // Manter campanhas existentes mesmo se houver erro
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        console.error('API returned error:', data.error);
+        toast.error(data.error);
+        // Manter campanhas existentes mesmo se houver erro
+        return;
+      }
+      
+      if (data.campaigns) {
+        // Atualizar informações de paginação
+        if (data.pagination) {
+          setTotal(data.pagination.total || 0);
+          setHasMore(data.pagination.hasMore || false);
+        }
+        
+        // Converter dados da API para o formato esperado
+        const formattedCampaigns: Campaign[] = data.campaigns.map((camp: any) => ({
+          id: camp.id,
+          metaId: camp.metaId,
+          name: camp.name,
+          status: camp.status as 'ACTIVE' | 'PAUSED' | 'ARCHIVED',
+          objective: camp.objective || 'UNKNOWN',
+          spend: camp.spend || 0,
+          impressions: camp.impressions || 0,
+          clicks: camp.clicks || 0,
+          ctr: camp.ctr || 0,
+          roas: camp.roas || null,
+        }));
+        setCampaigns(formattedCampaigns);
+      } else {
+        // Se não há campanhas, definir como array vazio
+        setCampaigns([]);
+        setTotal(0);
+      }
+    } catch (error) {
+      console.error('Error fetching campaigns:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido ao carregar campanhas';
+      toast.error(errorMsg);
+      // Manter campanhas existentes mesmo se houver erro
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSync = async () => {
     setIsSyncing(true);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    setIsSyncing(false);
+    const toastId = toast.loading('Sincronizando campanhas do Meta...');
+    
+    try {
+      const response = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        // Tratar rate limiting especificamente
+        if (response.status === 429 || (data.error && (data.error.includes('requisições') || data.error.includes('rate limit')))) {
+          toast.error(
+            data.error || 'Muitas requisições à Meta API. Aguarde alguns minutos antes de tentar novamente.',
+            {
+              id: toastId,
+              duration: 5000,
+            }
+          );
+        } else {
+          const errorMsg = data.error || 'Erro ao sincronizar campanhas';
+          const details = data.details ? `: ${data.details}` : '';
+          toast.error(errorMsg + details, {
+            id: toastId,
+          });
+        }
+        return;
+      }
+
+      toast.success(data.message || 'Campanhas sincronizadas com sucesso!', {
+        id: toastId,
+      });
+      // Recarregar campanhas após sincronização
+      await fetchCampaigns();
+    } catch (error) {
+      console.error('Error syncing:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Erro ao sincronizar campanhas. Verifique se o backend está rodando.';
+      toast.error(errorMsg, {
+        id: toastId,
+        duration: 5000,
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleStatusChange = async (campaignId: string, metaId: string | undefined, newStatus: 'ACTIVE' | 'PAUSED') => {
+    if (!metaId) {
+      toast.error('Esta campanha não tem ID do Meta. Sincronize primeiro.');
+      return;
+    }
+
+    try {
+      const toastId = toast.loading(`${newStatus === 'ACTIVE' ? 'Ativando' : 'Pausando'} campanha...`);
+      
+      // Atualizar via API local (que deve chamar Meta API)
+      const response = await fetch(`/api/campaigns/${campaignId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(`Campanha ${newStatus === 'ACTIVE' ? 'ativada' : 'pausada'}!`, { id: toastId });
+        await fetchCampaigns(); // Recarregar lista
+      } else {
+        toast.error(data.error || 'Erro ao atualizar campanha', { id: toastId });
+      }
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast.error('Erro ao atualizar status da campanha');
+    }
   };
 
 
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [duplicateCount, setDuplicateCount] = useState(1);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null);
 
   const handleDuplicateClick = (campaignId: string) => {
     setSelectedCampaignId(campaignId);
@@ -192,30 +289,90 @@ export default function CampaignsPage() {
     setDuplicateDialogOpen(true);
   };
 
+  const handleDeleteClick = (campaignId: string) => {
+    setCampaignToDelete(campaignId);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!campaignToDelete) return;
+
+    const toastId = toast.loading('Arquivando campanha...');
+
+    try {
+      const response = await fetch(`/api/campaigns/${campaignToDelete}`, {
+        method: 'DELETE',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('Campanha arquivada com sucesso!', { id: toastId });
+        await fetchCampaigns();
+      } else {
+        toast.error(data.error || 'Erro ao arquivar campanha', { id: toastId });
+      }
+    } catch (error) {
+      console.error('Error deleting campaign:', error);
+      toast.error('Erro ao arquivar campanha', { id: toastId });
+    } finally {
+      setDeleteDialogOpen(false);
+      setCampaignToDelete(null);
+    }
+  };
+
   const handleConfirmDuplicate = async () => {
+    if (!selectedCampaignId) return;
+
     // Feedback visual inicial
     const toastId = toast.loading('Duplicando campanha...');
-    console.log(`Duplicando campanha ${selectedCampaignId} - ${duplicateCount} cópias`);
 
-    // Simulação de delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const response = await fetch(`/api/campaigns/${selectedCampaignId}/duplicate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: duplicateCount }),
+      });
 
-    // Sucesso
-    toast.success(`${duplicateCount} cópias criadas com sucesso!`, {
-      id: toastId,
-      description: 'As campanhas aparecerão na lista em instantes.'
-    });
+      const data = await response.json();
 
-    setDuplicateDialogOpen(false);
+      if (data.success) {
+        toast.success(data.message, {
+          id: toastId,
+          description: 'As campanhas aparecerão na lista em instantes.'
+        });
+        
+        // Recarregar campanhas
+        await fetchCampaigns();
+      } else {
+        toast.error(data.error || 'Erro ao duplicar campanha', {
+          id: toastId,
+        });
+      }
+    } catch (error) {
+      console.error('Error duplicating campaign:', error);
+      toast.error('Erro ao duplicar campanha', {
+        id: toastId,
+      });
+    } finally {
+      setDuplicateDialogOpen(false);
+    }
   };
 
   const filteredCampaigns = campaigns.filter((campaign) => {
     const matchesSearch = campaign.name
       .toLowerCase()
       .includes(searchQuery.toLowerCase());
-    const matchesStatus =
-      statusFilter === 'all' ||
-      campaign.status.toLowerCase() === statusFilter.toLowerCase();
+    
+    // Filtrar por status
+    let matchesStatus = false;
+    if (statusFilter === 'all') {
+      // Quando 'all', excluir campanhas arquivadas
+      matchesStatus = campaign.status !== 'ARCHIVED';
+    } else {
+      matchesStatus = campaign.status.toLowerCase() === statusFilter.toLowerCase();
+    }
+    
     return matchesSearch && matchesStatus;
   });
 
@@ -281,29 +438,59 @@ export default function CampaignsPage() {
       {/* Campaigns Table */}
       <Card className="bg-card border-border/50">
         <CardHeader className="pb-0">
-          <CardTitle className="text-base font-medium">
-            {filteredCampaigns.length} campanha
-            {filteredCampaigns.length !== 1 ? 's' : ''} encontrada
-            {filteredCampaigns.length !== 1 ? 's' : ''}
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-medium">
+              {loading ? 'Carregando...' : `${filteredCampaigns.length} de ${total} campanha${total !== 1 ? 's' : ''} encontrada${total !== 1 ? 's' : ''}`}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="limit" className="text-sm text-muted-foreground">
+                Mostrar:
+              </Label>
+              <Select
+                value={limit.toString()}
+                onValueChange={(value) => setLimit(parseInt(value))}
+              >
+                <SelectTrigger id="limit" className="w-[100px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                  <SelectItem value="200">200</SelectItem>
+                  <SelectItem value="500">500</SelectItem>
+                  <SelectItem value="1000">1000</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Nome</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Objetivo</TableHead>
-                <TableHead className="text-right">Gasto</TableHead>
-                <TableHead className="text-right">Impressões</TableHead>
-                <TableHead className="text-right">Cliques</TableHead>
-                <TableHead className="text-right">CTR</TableHead>
-                <TableHead className="text-right">ROAS</TableHead>
-                <TableHead className="w-12"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredCampaigns.map((campaign) => (
+          {loading ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
+              Carregando campanhas...
+            </div>
+          ) : filteredCampaigns.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              Nenhuma campanha encontrada. Clique em "Sincronizar" para buscar campanhas do Meta.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Objetivo</TableHead>
+                  <TableHead className="text-right">Gasto</TableHead>
+                  <TableHead className="text-right">Impressões</TableHead>
+                  <TableHead className="text-right">Cliques</TableHead>
+                  <TableHead className="text-right">CTR</TableHead>
+                  <TableHead className="text-right">ROAS</TableHead>
+                  <TableHead className="w-12"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredCampaigns.map((campaign) => (
                 <TableRow
                   key={campaign.id}
                   className="cursor-pointer hover:bg-muted/30"
@@ -353,26 +540,31 @@ export default function CampaignsPage() {
                             Ver detalhes
                           </Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Edit className="mr-2 h-4 w-4" />
-                          Editar
+                        <DropdownMenuItem asChild>
+                          <Link href={`/campaigns/${campaign.id}/edit`}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Editar
+                          </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleDuplicateClick(campaign.id)}>
                           <Copy className="mr-2 h-4 w-4" />
                           Duplicar
                         </DropdownMenuItem>
                         {campaign.status === 'ACTIVE' ? (
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleStatusChange(campaign.id, campaign.metaId, 'PAUSED')}>
                             <Pause className="mr-2 h-4 w-4" />
                             Pausar
                           </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem>
+                        ) : campaign.status === 'PAUSED' ? (
+                          <DropdownMenuItem onClick={() => handleStatusChange(campaign.id, campaign.metaId, 'ACTIVE')}>
                             <Play className="mr-2 h-4 w-4" />
                             Ativar
                           </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem className="text-destructive focus:text-destructive">
+                        ) : null}
+                        <DropdownMenuItem 
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => handleDeleteClick(campaign.id)}
+                        >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Excluir
                         </DropdownMenuItem>
@@ -380,9 +572,10 @@ export default function CampaignsPage() {
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -404,12 +597,12 @@ export default function CampaignsPage() {
                 id="copies"
                 type="number"
                 min={1}
-                max={10}
+                max={200}
                 value={duplicateCount}
                 onChange={(e) => {
                   const val = parseInt(e.target.value);
                   if (isNaN(val)) return; // Allow empty briefly or handle differently? Actually just ignore invalid
-                  setDuplicateCount(Math.min(10, Math.max(1, val)));
+                  setDuplicateCount(Math.min(200, Math.max(1, val)));
                 }}
                 className="col-span-3"
               />
@@ -425,6 +618,27 @@ export default function CampaignsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div >
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Arquivar Campanha</DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja arquivar esta campanha?
+              Esta ação pode ser revertida posteriormente.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              Arquivar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

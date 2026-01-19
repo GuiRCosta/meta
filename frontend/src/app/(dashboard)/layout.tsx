@@ -16,16 +16,16 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Sidebar */}
+      {/* Sidebar - Fixed */}
       <Sidebar />
       
-      {/* Main content area */}
-      <div className="pl-64">
+      {/* Main content area - Offset by sidebar width (256px = w-64) */}
+      <div className="ml-64 flex flex-col min-h-screen">
         {/* Header */}
         <Header />
         
-        {/* Page content */}
-        <main className="p-6">
+        {/* Page content - Scrollable */}
+        <main className="flex-1 overflow-y-auto p-6">
           {children}
         </main>
       </div>

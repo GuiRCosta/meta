@@ -11,6 +11,7 @@ from app.tools.meta_api import (
     create_campaign,
     update_campaign_status,
     get_campaign_insights,
+    duplicate_campaign,
 )
 
 
@@ -30,10 +31,18 @@ class UpdateStatusRequest(BaseModel):
     status: str  # ACTIVE, PAUSED, ARCHIVED
 
 
+class DuplicateCampaignRequest(BaseModel):
+    """Request para duplicar campanha."""
+    name_suffix: str = " - Cópia"
+    deep_copy: bool = False  # Copiar ad sets e ads também (padrão False para evitar limite)
+    status_option: str = "PAUSED"  # Status da nova campanha
+
+
 @router.get("/")
 async def get_campaigns(
     status: Optional[str] = None,
-    limit: int = 50
+    limit: int = 50,
+    include_drafts: bool = True
 ):
     """
     Lista campanhas da conta Meta Ads.
@@ -41,8 +50,9 @@ async def get_campaigns(
     Args:
         status: Filtrar por ACTIVE, PAUSED, ARCHIVED
         limit: Número máximo de campanhas (padrão: 50)
+        include_drafts: Incluir rascunhos (padrão: True)
     """
-    result = await list_campaigns(status=status, limit=limit)
+    result = await list_campaigns(status=status, limit=limit, include_drafts=include_drafts)
     
     if not result["success"]:
         raise HTTPException(status_code=500, detail=result["error"])
@@ -138,6 +148,28 @@ async def get_insights(
         )
     
     result = await get_campaign_insights(campaign_id, date_preset)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    
+    return result
+
+
+@router.post("/{campaign_id}/duplicate")
+async def duplicate(campaign_id: str, request: DuplicateCampaignRequest):
+    """
+    Duplica uma campanha existente na Meta API usando o endpoint /copies.
+    
+    Args:
+        campaign_id: ID da campanha original no Meta
+        request: Request com opções de duplicação
+    """
+    result = await duplicate_campaign(
+        campaign_id,
+        name_suffix=request.name_suffix,
+        deep_copy=request.deep_copy,
+        status_option=request.status_option
+    )
     
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])

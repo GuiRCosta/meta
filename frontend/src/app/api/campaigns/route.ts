@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     // Construir filtro
     const where: {
       userId: string;
-      status?: string;
+      status?: string | { not: string };
       name?: { contains: string; mode: 'insensitive' };
     } = {
       userId: session.user.id,
@@ -36,31 +36,43 @@ export async function GET(request: NextRequest) {
 
     if (status && status !== 'all') {
       where.status = status;
+    } else {
+      // Quando status é 'all' ou não especificado, excluir campanhas arquivadas
+      where.status = { not: 'ARCHIVED' };
     }
 
     if (search) {
       where.name = { contains: search, mode: 'insensitive' };
     }
 
+    console.log('Buscando campanhas com filtro:', where);
+    
     // Buscar campanhas com métricas
-    const [campaigns, total] = await Promise.all([
-      prisma.campaign.findMany({
-        where,
-        include: {
-          metrics: {
-            orderBy: { date: 'desc' },
-            take: 7, // Últimos 7 dias
+    let campaigns, total;
+    try {
+      [campaigns, total] = await Promise.all([
+        prisma.campaign.findMany({
+          where,
+          include: {
+            metrics: {
+              orderBy: { date: 'desc' },
+              take: 7, // Últimos 7 dias
+            },
+            adSets: {
+              select: { id: true },
+            },
           },
-          adSets: {
-            select: { id: true },
-          },
-        },
-        orderBy: { updatedAt: 'desc' },
-        take: limit,
-        skip: offset,
-      }),
-      prisma.campaign.count({ where }),
-    ]);
+          orderBy: { updatedAt: 'desc' },
+          take: limit,
+          skip: offset,
+        }),
+        prisma.campaign.count({ where }),
+      ]);
+      console.log(`Encontradas ${campaigns.length} campanhas de ${total} total`);
+    } catch (dbError) {
+      console.error('Erro ao buscar no banco de dados:', dbError);
+      throw dbError;
+    }
 
     // Calcular métricas agregadas para cada campanha
     const campaignsWithMetrics = campaigns.map((campaign) => {
@@ -97,6 +109,8 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    console.log('Retornando campanhas formatadas:', campaignsWithMetrics.length);
+    
     return NextResponse.json({ 
       campaigns: campaignsWithMetrics,
       pagination: {
@@ -108,8 +122,23 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error fetching campaigns:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    // Log completo do erro para debug
+    console.error('Error details:', {
+      message: errorMessage,
+      stack: errorStack,
+      error: error,
+    });
+    
     return NextResponse.json(
-      { error: 'Erro ao buscar campanhas' },
+      { 
+        error: 'Erro ao buscar campanhas',
+        details: errorMessage,
+        // Não incluir stack em produção
+        ...(process.env.NODE_ENV === 'development' && { stack: errorStack }),
+      },
       { status: 500 }
     );
   }

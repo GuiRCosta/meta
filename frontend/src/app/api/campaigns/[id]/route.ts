@@ -129,17 +129,35 @@ export async function PATCH(
       }
     }
 
+    // Se status mudou e tem metaId, atualizar na Meta API
+    if (body.status && body.status !== existing.status && existing.metaId) {
+      try {
+        const backendUrl = process.env.AGNO_API_URL || 'http://localhost:8000';
+        const metaResponse = await fetch(
+          `${backendUrl}/api/campaigns/${existing.metaId}/status`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: body.status }),
+          }
+        );
+
+        if (!metaResponse.ok) {
+          const error = await metaResponse.json();
+          console.error('Erro ao atualizar na Meta API:', error);
+          // Continuar mesmo se falhar na Meta, atualizar localmente
+        }
+      } catch (error) {
+        console.error('Erro ao chamar Meta API:', error);
+        // Continuar mesmo se falhar na Meta, atualizar localmente
+      }
+    }
+
     // Atualizar no banco local
     const campaign = await prisma.campaign.update({
       where: { id },
       data: updateData,
     });
-
-    // TODO: Sincronizar com Meta API
-    // Se status mudou, atualizar na Meta
-    // if (body.status && body.status !== existing.status) {
-    //   await metaApi.updateCampaignStatus(existing.metaId, body.status);
-    // }
 
     return NextResponse.json({ 
       success: true,
@@ -186,15 +204,35 @@ export async function DELETE(
       );
     }
 
-    // Na Meta API, campanhas não são realmente deletadas, apenas arquivadas
-    // Aqui vamos apenas marcar como ARCHIVED no banco local
+    // Arquivar na Meta API primeiro (se tiver metaId)
+    if (existing.metaId && !existing.metaId.startsWith('meta_camp_')) {
+      try {
+        const backendUrl = process.env.AGNO_API_URL || 'http://localhost:8000';
+        const metaResponse = await fetch(
+          `${backendUrl}/api/campaigns/${existing.metaId}/status`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'ARCHIVED' }),
+          }
+        );
+
+        if (!metaResponse.ok) {
+          const errorData = await metaResponse.json().catch(() => ({}));
+          console.error('Erro ao arquivar na Meta API:', errorData);
+          // Continuar mesmo se falhar na Meta, arquivar localmente
+        }
+      } catch (error) {
+        console.error('Erro ao chamar Meta API para arquivar:', error);
+        // Continuar mesmo se falhar na Meta, arquivar localmente
+      }
+    }
+
+    // Arquivar no banco local
     await prisma.campaign.update({
       where: { id },
       data: { status: 'ARCHIVED' },
     });
-
-    // TODO: Arquivar na Meta API
-    // await metaApi.archiveCampaign(existing.metaId);
 
     return NextResponse.json({ 
       success: true,
