@@ -47,6 +47,8 @@ import {
   Trash2,
   Filter,
   Copy,
+  CheckSquare,
+  Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -281,7 +283,12 @@ export default function CampaignsPage() {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [duplicateCount, setDuplicateCount] = useState(1);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null);
+  const [campaignToDelete, useCampaignToDelete] = useState<string | null>(null);
+
+  // Estado para seleção múltipla
+  const [selectedCampaigns, setSelectedCampaigns] = useState<Set<string>>(new Set());
+  const [bulkActionDialogOpen, setBulkActionDialogOpen] = useState(false);
+  const [bulkActionType, setBulkActionType] = useState<'ACTIVE' | 'PAUSED' | 'ARCHIVED' | null>(null);
 
   const handleDuplicateClick = (campaignId: string) => {
     setSelectedCampaignId(campaignId);
@@ -292,6 +299,68 @@ export default function CampaignsPage() {
   const handleDeleteClick = (campaignId: string) => {
     setCampaignToDelete(campaignId);
     setDeleteDialogOpen(true);
+  };
+
+  // Funções de seleção múltipla
+  const toggleSelectAll = () => {
+    if (selectedCampaigns.size === filteredCampaigns.length) {
+      setSelectedCampaigns(new Set());
+    } else {
+      setSelectedCampaigns(new Set(filteredCampaigns.map(c => c.id)));
+    }
+  };
+
+  const toggleCampaign = (campaignId: string) => {
+    const newSelected = new Set(selectedCampaigns);
+    if (newSelected.has(campaignId)) {
+      newSelected.delete(campaignId);
+    } else {
+      newSelected.add(campaignId);
+    }
+    setSelectedCampaigns(newSelected);
+  };
+
+  const isCampaignSelected = (campaignId: string) => selectedCampaigns.has(campaignId);
+
+  // Ações em lote
+  const openBulkActionDialog = (actionType: 'ACTIVE' | 'PAUSED' | 'ARCHIVED') => {
+    setBulkActionType(actionType);
+    setBulkActionDialogOpen(true);
+  };
+
+  const handleBulkAction = async () => {
+    if (!bulkActionType || selectedCampaigns.size === 0) return;
+
+    const campaignIds = Array.from(selectedCampaigns);
+    const actionLabel = bulkActionType === 'ACTIVE' ? 'ativar' : bulkActionType === 'PAUSED' ? 'pausar' : 'arquivar';
+    const toastId = toast.loading(`${actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1)} ${selectedCampaigns.size} campanha(s)...`);
+
+    try {
+      const response = await fetch('/api/campaigns/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignIds,
+          action: bulkActionType,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success(data.message || `${selectedCampaigns.size} campanha(s) ${actionLabel}da(s) com sucesso!`, { id: toastId });
+        setSelectedCampaigns(new Set());
+        await fetchCampaigns();
+      } else {
+        toast.error(data.error || `Erro ao ${actionLabel} campanhas`, { id: toastId });
+      }
+    } catch (error) {
+      console.error('Error in bulk action:', error);
+      toast.error(`Erro ao ${actionLabel} campanhas`, { id: toastId });
+    } finally {
+      setBulkActionDialogOpen(false);
+      setBulkActionType(null);
+    }
   };
 
   const handleConfirmDelete = async () => {
@@ -435,6 +504,58 @@ export default function CampaignsPage() {
         </CardContent>
       </Card>
 
+      {/* Bulk Actions Bar */}
+      {selectedCampaigns.size > 0 && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium">
+                  {selectedCampaigns.size} campanha(s) selecionada(s)
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedCampaigns(new Set())}
+                  className="text-muted-foreground"
+                >
+                  Limpar seleção
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openBulkActionDialog('ACTIVE')}
+                  className="gap-2"
+                >
+                  <Play className="h-4 w-4" />
+                  Ativar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openBulkActionDialog('PAUSED')}
+                  className="gap-2"
+                >
+                  <Pause className="h-4 w-4" />
+                  Pausar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openBulkActionDialog('ARCHIVED')}
+                  className="gap-2 text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Arquivar
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Campaigns Table */}
       <Card className="bg-card border-border/50">
         <CardHeader className="pb-0">
@@ -478,6 +599,21 @@ export default function CampaignsPage() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-12">
+                    <div className="flex items-center justify-center">
+                      <button
+                        onClick={toggleSelectAll}
+                        className="h-5 w-5 rounded border-2 border-muted-foreground/30 hover:border-primary transition-colors flex items-center justify-center"
+                      >
+                        {selectedCampaigns.size > 0 && selectedCampaigns.size === filteredCampaigns.length && (
+                          <CheckSquare className="h-4 w-4 text-primary" />
+                        )}
+                        {selectedCampaigns.size > 0 && selectedCampaigns.size < filteredCampaigns.length && (
+                          <Layers className="h-4 w-4 text-primary" />
+                        )}
+                      </button>
+                    </div>
+                  </TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Objetivo</TableHead>
@@ -493,8 +629,27 @@ export default function CampaignsPage() {
                 {filteredCampaigns.map((campaign) => (
                 <TableRow
                   key={campaign.id}
-                  className="cursor-pointer hover:bg-muted/30"
+                  className={`cursor-pointer hover:bg-muted/30 ${isCampaignSelected(campaign.id) ? 'bg-primary/5' : ''}`}
                 >
+                  <TableCell>
+                    <div className="flex items-center justify-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleCampaign(campaign.id);
+                        }}
+                        className={`h-5 w-5 rounded border-2 transition-colors flex items-center justify-center ${
+                          isCampaignSelected(campaign.id)
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-muted-foreground/30 hover:border-primary'
+                        }`}
+                      >
+                        {isCampaignSelected(campaign.id) && (
+                          <CheckSquare className="h-4 w-4" />
+                        )}
+                      </button>
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <Link
                       href={`/campaigns/${campaign.id}`}
@@ -635,6 +790,32 @@ export default function CampaignsPage() {
             </Button>
             <Button variant="destructive" onClick={handleConfirmDelete}>
               Arquivar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Action Dialog */}
+      <Dialog open={bulkActionDialogOpen} onOpenChange={setBulkActionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {bulkActionType === 'ACTIVE' ? 'Ativar Campanhas' : bulkActionType === 'PAUSED' ? 'Pausar Campanhas' : 'Arquivar Campanhas'}
+            </DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja {bulkActionType === 'ACTIVE' ? 'ativar' : bulkActionType === 'PAUSED' ? 'pausar' : 'arquivar'} {selectedCampaigns.size} campanha(s)?
+              {bulkActionType === 'ARCHIVED' && '\n\nEsta ação pode ser revertida posteriormente.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkActionDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              variant={bulkActionType === 'ARCHIVED' ? 'destructive' : 'default'}
+              onClick={handleBulkAction}
+            >
+              {bulkActionType === 'ACTIVE' ? 'Ativar' : bulkActionType === 'PAUSED' ? 'Pausar' : 'Arquivar'}
             </Button>
           </DialogFooter>
         </DialogContent>
