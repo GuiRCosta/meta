@@ -80,28 +80,57 @@ export default function AgentPage() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
     setIsLoading(true);
 
-    // Simulate AI response
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      // Chamar API real do agente
+      const response = await fetch('/api/agent/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: currentInput,
+          history: messages.map(m => ({
+            role: m.role,
+            content: m.content,
+          })),
+        }),
+      });
 
-    const aiResponse: Message = {
-      id: (Date.now() + 1).toString(),
-      role: 'assistant',
-      content: generateMockResponse(input),
-      timestamp: new Date(),
-      actions: input.toLowerCase().includes('criar')
-        ? [
-            { type: 'confirm', label: 'Confirmar' },
-            { type: 'cancel', label: 'Cancelar' },
-            { type: 'edit', label: 'Editar' },
-          ]
-        : undefined,
-    };
+      const data = await response.json();
 
-    setMessages((prev) => [...prev, aiResponse]);
-    setIsLoading(false);
+      if (data.success && data.response) {
+        const aiResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.response.content,
+          timestamp: new Date(data.response.timestamp || new Date()),
+          actions: data.response.actions || (currentInput.toLowerCase().includes('criar')
+            ? [
+                { type: 'confirm' as const, label: 'Confirmar' },
+                { type: 'cancel' as const, label: 'Cancelar' },
+                { type: 'edit' as const, label: 'Editar' },
+              ]
+            : undefined),
+        };
+
+        setMessages((prev) => [...prev, aiResponse]);
+      } else {
+        throw new Error(data.error || 'Erro ao processar mensagem');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `❌ Erro ao processar sua mensagem. Verifique se o backend está rodando.\n\n${error instanceof Error ? error.message : 'Erro desconhecido'}`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSuggestion = (suggestion: string) => {
@@ -308,62 +337,4 @@ A campanha foi criada pausada para você revisar antes de ativar.`,
       </Card>
     </div>
   );
-}
-
-function generateMockResponse(input: string): string {
-  const lowerInput = input.toLowerCase();
-
-  if (lowerInput.includes('criar') && lowerInput.includes('campanha')) {
-    return `Entendi! Vou criar uma campanha com base no que você pediu.
-
-**📢 Campanha:** E-commerce Conversões
-**🎯 Objetivo:** CONVERSIONS
-**💰 Orçamento:** R$ 100/dia
-**👥 Público:** 25-45 anos, Brasil
-
-Confirma a criação?`;
-  }
-
-  if (lowerInput.includes('analisar') || lowerInput.includes('performance')) {
-    return `Aqui está a análise de performance das suas campanhas:
-
-**📊 Últimos 7 dias:**
-• Impressões: 125.000 (+8%)
-• Cliques: 3.800 (+15%)
-• Conversões: 320 (+22%)
-• ROAS médio: 3.8x
-
-**🏆 Melhor campanha:** E-commerce Premium
-• CTR: 3.5% (acima da média)
-• ROAS: 4.2x
-
-**⚠️ Atenção:** Campanha "Teste B" com CTR baixo (1.2%)
-
-Quer que eu sugira otimizações?`;
-  }
-
-  if (lowerInput.includes('projeção') || lowerInput.includes('orçamento')) {
-    return `**💰 Projeção do Mês (Janeiro)**
-
-**Orçamento:**
-• Limite: R$ 5.000
-• Gasto atual: R$ 2.350 (47%)
-• Projeção fim do mês: R$ 4.850 ✅
-
-**📈 Resultados Esperados:**
-• Conversões: ~320 (meta: 300) ✅
-• ROAS projetado: 3.8x
-
-Você está dentro do limite e deve atingir as metas!`;
-  }
-
-  return `Entendi sua solicitação: "${input}"
-
-Posso ajudar você com:
-• Criar campanhas
-• Analisar performance
-• Sugerir otimizações
-• Verificar orçamento
-
-O que você gostaria de fazer?`;
 }

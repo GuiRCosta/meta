@@ -1,9 +1,11 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Megaphone,
   Play,
@@ -16,6 +18,7 @@ import {
   AlertCircle,
   ArrowRight,
   Target,
+  RefreshCw,
 } from 'lucide-react';
 import {
   LineChart,
@@ -26,58 +29,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-
-// Mock data for the dashboard
-const stats = {
-  totalCampaigns: 7,
-  activeCampaigns: 5,
-  pausedCampaigns: 2,
-  todaySpend: 250.0,
-  monthSpend: 2350.0,
-  monthLimit: 5000.0,
-  projectedSpend: 4850.0,
-  impressions: 45000,
-  clicks: 1200,
-  ctr: 2.67,
-  roas: 3.8,
-};
-
-const spendingData = [
-  { day: 'Seg', spend: 180 },
-  { day: 'Ter', spend: 220 },
-  { day: 'Qua', spend: 195 },
-  { day: 'Qui', spend: 280 },
-  { day: 'Sex', spend: 250 },
-  { day: 'Sáb', spend: 150 },
-  { day: 'Dom', spend: 120 },
-];
-
-const topCampaigns = [
-  { id: '1', name: 'E-commerce Premium', metric: 'CTR', value: '3.5%', trend: 'up' as const },
-  { id: '2', name: 'Tráfego Site', metric: 'CPC', value: 'R$ 0,85', trend: 'down' as const },
-  { id: '3', name: 'Conversões Q1', metric: 'ROAS', value: '4.2x', trend: 'up' as const },
-];
-
-const alerts = [
-  {
-    id: '1',
-    type: 'error' as const,
-    title: 'Campanha "Teste B" com CTR baixo',
-    message: 'CTR atual: 1.2% (mínimo: 1.5%)',
-  },
-  {
-    id: '2',
-    type: 'warning' as const,
-    title: '80% do orçamento mensal utilizado',
-    message: 'R$ 4.000 de R$ 5.000',
-  },
-  {
-    id: '3',
-    type: 'info' as const,
-    title: 'Tendência negativa em "Promo Verão"',
-    message: 'Conversões -15% vs. semana anterior',
-  },
-];
+import Link from 'next/link';
+import { toast } from 'sonner';
 
 interface MetricCardProps {
   title: string;
@@ -217,7 +170,7 @@ function BudgetCard({ className }: { className?: string }) {
 }
 
 
-function SpendingChart() {
+function SpendingChart({ data }: { data: Array<{ day: string; spend: number }> }) {
   return (
     <Card className="bg-card border-border/50">
       <CardHeader>
@@ -228,7 +181,7 @@ function SpendingChart() {
       <CardContent>
         <div className="h-[200px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={spendingData}>
+            <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis
                 dataKey="day"
@@ -265,7 +218,24 @@ function SpendingChart() {
   );
 }
 
-function TopCampaignsCard() {
+function TopCampaignsCard({ campaigns }: { campaigns: Array<{ id: string; name: string; metric: string; value: string; trend: 'up' | 'down' }> }) {
+  if (campaigns.length === 0) {
+    return (
+      <Card className="bg-card border-border/50">
+        <CardHeader>
+          <CardTitle className="text-base font-medium">
+            🏆 Top Campanhas
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground text-center py-8">
+            Nenhuma campanha com métricas ainda
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="bg-card border-border/50">
       <CardHeader>
@@ -274,14 +244,14 @@ function TopCampaignsCard() {
             🏆 Top Campanhas
           </CardTitle>
           <Button variant="ghost" size="sm" className="text-primary" asChild>
-            <a href="/campaigns">
+            <Link href="/campaigns">
               Ver todas <ArrowRight className="ml-1 h-4 w-4" />
-            </a>
+            </Link>
           </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {topCampaigns.map((campaign, index) => (
+        {campaigns.map((campaign, index) => (
           <div
             key={campaign.id}
             className="flex items-center justify-between rounded-lg bg-muted/30 p-3"
@@ -310,7 +280,13 @@ function TopCampaignsCard() {
   );
 }
 
-function AlertsCard({ compact = false }: { compact?: boolean }) {
+function AlertsCard({ 
+  alerts, 
+  compact = false 
+}: { 
+  alerts: Array<{ id: string; type: 'error' | 'warning' | 'info'; title: string; message: string }>;
+  compact?: boolean;
+}) {
   const getAlertStyles = (type: 'error' | 'warning' | 'info') => {
     switch (type) {
       case 'error':
@@ -366,8 +342,10 @@ function AlertsCard({ compact = false }: { compact?: boolean }) {
                 </p>
               </div>
             </div>
-            <Button variant="outline" size="sm" className="text-destructive border-destructive/30">
-              Ver todos
+            <Button variant="outline" size="sm" className="text-destructive border-destructive/30" asChild>
+              <Link href="/alerts">
+                Ver todos
+              </Link>
             </Button>
           </div>
         </CardContent>
@@ -388,7 +366,26 @@ function AlertsCard({ compact = false }: { compact?: boolean }) {
             </CardTitle>
             <Badge className="bg-destructive text-destructive-foreground">{alerts.length}</Badge>
           </div>
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-muted-foreground"
+            onClick={async () => {
+              try {
+                const response = await fetch('/api/alerts', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ markAllRead: true }),
+                });
+                if (response.ok) {
+                  setAlerts([]);
+                  toast.success('Todos os alertas marcados como lidos');
+                }
+              } catch (error) {
+                toast.error('Erro ao marcar alertas');
+              }
+            }}
+          >
             Marcar como lidos
           </Button>
         </div>
@@ -420,20 +417,103 @@ function AlertsCard({ compact = false }: { compact?: boolean }) {
 }
 
 export default function DashboardPage() {
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalCampaigns: 0,
+    activeCampaigns: 0,
+    pausedCampaigns: 0,
+    todaySpend: 0,
+    monthSpend: 0,
+    monthLimit: 5000,
+    projectedSpend: 0,
+    impressions: 0,
+    clicks: 0,
+    ctr: 0,
+    roas: 0,
+  });
+  const [spendingData, setSpendingData] = useState<Array<{ day: string; spend: number }>>([]);
+  const [topCampaigns, setTopCampaigns] = useState<Array<{ id: string; name: string; metric: string; value: string; trend: 'up' | 'down' }>>([]);
+  const [alerts, setAlerts] = useState<Array<{ id: string; type: 'error' | 'warning' | 'info'; title: string; message: string }>>([]);
+  const [trends, setTrends] = useState({
+    spend: 0,
+    impressions: 0,
+    clicks: 0,
+    ctr: 0,
+  });
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/dashboard');
+      
+      if (!response.ok) {
+        throw new Error('Erro ao buscar dados do dashboard');
+      }
+
+      const data = await response.json();
+      
+      setStats(data.stats);
+      setSpendingData(data.spendingData || []);
+      setTopCampaigns(data.topCampaigns || []);
+      setAlerts(data.alerts || []);
+      setTrends(data.trends || { spend: 0, impressions: 0, clicks: 0, ctr: 0 });
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      toast.error('Erro ao carregar dados do dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const hasUrgentAlerts = alerts.some(a => a.type === 'error');
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <Skeleton className="h-8 w-64 mb-2" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Skeleton className="lg:col-span-2 h-48" />
+          <div className="space-y-6">
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Page Title */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Visão geral das suas campanhas Meta
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-muted-foreground">
+            Visão geral das suas campanhas Meta
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={fetchDashboardData}
+          disabled={loading}
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
 
       {/* 🚨 ALERTAS - PRIORIDADE MÁXIMA (Primeiro elemento visível) */}
-      {hasUrgentAlerts && <AlertsCard />}
+      {hasUrgentAlerts && <AlertsCard alerts={alerts} />}
 
       {/* Orçamento + Métricas Principais */}
       {/* Orçamento + Métricas Principais */}
@@ -447,19 +527,19 @@ export default function DashboardPage() {
         <div className="flex flex-col gap-6 h-full">
           <MetricCard
             title="Gasto Hoje"
-            value={`R$ ${stats.todaySpend.toFixed(0)}`}
+            value={`R$ ${stats.todaySpend.toFixed(2)}`}
             icon={DollarSign}
-            trend="up"
-            trendValue="+12%"
+            trend={trends.spend >= 0 ? 'up' : 'down'}
+            trendValue={`${trends.spend >= 0 ? '+' : ''}${trends.spend.toFixed(1)}%`}
             className="flex-1"
           />
           <MetricCard
             title="ROAS Médio"
-            value={stats.roas}
+            value={stats.roas.toFixed(1)}
             suffix="x"
             icon={TrendingUp}
-            trend="up"
-            trendValue="+22%"
+            trend={stats.roas >= 3 ? 'up' : 'down'}
+            trendValue={stats.roas >= 3 ? 'Bom' : 'Baixo'}
             className="flex-1"
           />
         </div>
@@ -474,35 +554,43 @@ export default function DashboardPage() {
         />
         <MetricCard
           title="Impressões Hoje"
-          value={`${(stats.impressions / 1000).toFixed(1)}k`}
+          value={stats.impressions >= 1000 ? `${(stats.impressions / 1000).toFixed(1)}k` : stats.impressions}
           icon={Eye}
-          trend="up"
-          trendValue="+8%"
+          trend={trends.impressions >= 0 ? 'up' : 'down'}
+          trendValue={`${trends.impressions >= 0 ? '+' : ''}${trends.impressions.toFixed(1)}%`}
         />
         <MetricCard
           title="Cliques Hoje"
-          value={`${(stats.clicks / 1000).toFixed(1)}k`}
+          value={stats.clicks >= 1000 ? `${(stats.clicks / 1000).toFixed(1)}k` : stats.clicks}
           icon={MousePointerClick}
-          trend="up"
-          trendValue="+15%"
+          trend={trends.clicks >= 0 ? 'up' : 'down'}
+          trendValue={`${trends.clicks >= 0 ? '+' : ''}${trends.clicks.toFixed(1)}%`}
         />
         <MetricCard
           title="CTR Médio"
-          value={`${stats.ctr}%`}
+          value={`${stats.ctr.toFixed(2)}%`}
           icon={Target}
-          trend="down"
-          trendValue="-2%"
+          trend={trends.ctr >= 0 ? 'up' : 'down'}
+          trendValue={`${trends.ctr >= 0 ? '+' : ''}${trends.ctr.toFixed(1)}%`}
         />
       </div>
 
       {/* Gráfico de Gastos + Top Campanhas */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <SpendingChart />
-        <TopCampaignsCard />
+        <SpendingChart data={spendingData} />
+        <TopCampaignsCard campaigns={topCampaigns} />
       </div>
 
       {/* Alertas (se não houver urgentes, mostra todos aqui) */}
-      {!hasUrgentAlerts && <AlertsCard />}
+      {!hasUrgentAlerts && alerts.length > 0 && <AlertsCard alerts={alerts} />}
+      {alerts.length === 0 && !hasUrgentAlerts && (
+        <Card className="bg-card border-border/50">
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <AlertCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+            <p>Nenhum alerta no momento</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

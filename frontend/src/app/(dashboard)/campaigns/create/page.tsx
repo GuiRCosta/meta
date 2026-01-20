@@ -127,16 +127,17 @@ export default function CreateCampaignPage() {
     setIsSubmitting(true);
     
     try {
-      // TODO: Integrate with Meta API via backend
       const campaignData = {
         campaign: {
           name: formData.name,
           objective: formData.objective,
           status: formData.status,
+          dailyBudget: parseFloat(formData.dailyBudget),
         },
         adSet: {
           name: formData.adSetName,
-          dailyBudget: parseFloat(formData.dailyBudget) * 100, // Meta uses cents
+          dailyBudget: parseFloat(formData.dailyBudget),
+          status: formData.status,
           targeting: {
             age_min: parseInt(formData.ageMin),
             age_max: parseInt(formData.ageMax),
@@ -144,8 +145,9 @@ export default function CreateCampaignPage() {
             genders: formData.gender === 'all' ? [1, 2] : [parseInt(formData.gender)],
           },
         },
-        ad: {
+        ad: formData.adName && formData.primaryText ? {
           name: formData.adName,
+          status: formData.status,
           creative: {
             primaryText: formData.primaryText,
             headline: formData.headline,
@@ -153,19 +155,38 @@ export default function CreateCampaignPage() {
             callToAction: formData.callToAction,
             linkUrl: formData.linkUrl,
           },
-        },
+          mediaUrl: formData.media?.preview,
+          mediaType: formData.media?.type,
+        } : undefined,
       };
 
-      console.log('Campaign data to submit:', campaignData);
+      const toastId = toast.loading('Criando campanha na Meta...');
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      try {
+        const response = await fetch('/api/campaigns', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(campaignData),
+        });
 
-      toast.success('Campanha criada com sucesso!', {
-        description: `"${formData.name}" foi criada e está ${formData.status === 'ACTIVE' ? 'ativa' : 'pausada'}.`,
-      });
+        const data = await response.json();
 
-      router.push('/campaigns');
+        if (response.ok && data.success) {
+          toast.success('Campanha criada com sucesso!', {
+            id: toastId,
+            description: `"${formData.name}" foi criada na Meta e está ${formData.status === 'ACTIVE' ? 'ativa' : 'pausada'}.`,
+          });
+          router.push('/campaigns');
+        } else {
+          throw new Error(data.error || 'Erro ao criar campanha');
+        }
+      } catch (error) {
+        console.error('Error creating campaign:', error);
+        toast.error('Erro ao criar campanha', {
+          id: toastId,
+          description: error instanceof Error ? error.message : 'Tente novamente ou entre em contato com o suporte.',
+        });
+      }
     } catch (error) {
       toast.error('Erro ao criar campanha', {
         description: 'Tente novamente ou entre em contato com o suporte.',

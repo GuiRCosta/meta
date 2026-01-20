@@ -173,15 +173,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // TODO: Integrar com Meta API para criar campanha
-    // const metaCampaign = await metaApi.createCampaign({...});
-    // const metaAdSet = await metaApi.createAdSet({...});
-    // const metaAd = await metaApi.createAd({...});
+    // Criar campanha na Meta API via backend
+    const backendUrl = process.env.AGNO_API_URL || 'http://localhost:8000';
+    let metaCampaignId: string | null = null;
+    let metaAdSetId: string | null = null;
+    let metaAdId: string | null = null;
 
-    // Por enquanto, gerar IDs mock para Meta
-    const metaCampaignId = `meta_camp_${Date.now()}`;
-    const metaAdSetId = `meta_adset_${Date.now()}`;
-    const metaAdId = `meta_ad_${Date.now()}`;
+    try {
+      // 1. Criar campanha na Meta API
+      const campaignBudget = campaign.dailyBudget 
+        ? Math.round(campaign.dailyBudget * 100) // Converter para centavos
+        : undefined;
+
+      const metaCampaignResponse = await fetch(`${backendUrl}/api/campaigns/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: campaign.name,
+          objective: campaign.objective,
+          status: campaign.status || 'PAUSED',
+          daily_budget: campaignBudget,
+        }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (metaCampaignResponse.ok) {
+        const metaCampaignData = await metaCampaignResponse.json();
+        if (metaCampaignData.success) {
+          metaCampaignId = metaCampaignData.campaign_id;
+        } else {
+          console.error('Erro ao criar campanha na Meta:', metaCampaignData.error);
+          // Continuar mesmo se falhar, criar localmente
+        }
+      } else {
+        const errorData = await metaCampaignResponse.json().catch(() => ({}));
+        console.error('Erro HTTP ao criar campanha na Meta:', errorData);
+        // Continuar mesmo se falhar, criar localmente
+      }
+    } catch (error) {
+      console.error('Erro ao chamar backend para criar campanha:', error);
+      // Continuar mesmo se falhar, criar localmente
+    }
+
+    // Se não conseguiu criar na Meta, usar IDs mock temporários
+    if (!metaCampaignId) {
+      metaCampaignId = `meta_camp_${Date.now()}`;
+      metaAdSetId = `meta_adset_${Date.now()}`;
+      metaAdId = `meta_ad_${Date.now()}`;
+    } else {
+      // TODO: Criar Ad Set e Ad na Meta API também
+      // Por enquanto, usar IDs mock para ad sets e ads
+      metaAdSetId = `meta_adset_${Date.now()}`;
+      metaAdId = `meta_ad_${Date.now()}`;
+    }
 
     // Criar campanha no banco de dados
     const createdCampaign = await prisma.campaign.create({

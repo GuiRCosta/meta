@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -20,6 +21,7 @@ import {
   TrendingUp,
   TrendingDown,
   Calendar,
+  RefreshCw,
 } from 'lucide-react';
 import {
   LineChart,
@@ -32,38 +34,7 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
-
-// Mock data
-const overviewStats = {
-  spend: { value: 1750, change: 12 },
-  impressions: { value: 125000, change: 8 },
-  clicks: { value: 3800, change: 15 },
-  conversions: { value: 320, change: 22 },
-};
-
-const chartData = [
-  { day: 'Seg', spend: 220, impressions: 18000, clicks: 540, conversions: 45 },
-  { day: 'Ter', spend: 280, impressions: 22000, clicks: 660, conversions: 58 },
-  { day: 'Qua', spend: 250, impressions: 19500, clicks: 585, conversions: 48 },
-  { day: 'Qui', spend: 310, impressions: 24000, clicks: 720, conversions: 62 },
-  { day: 'Sex', spend: 290, impressions: 21500, clicks: 645, conversions: 52 },
-  { day: 'Sáb', spend: 200, impressions: 12000, clicks: 360, conversions: 30 },
-  { day: 'Dom', spend: 200, impressions: 8000, clicks: 290, conversions: 25 },
-];
-
-const campaignBreakdown = [
-  { name: 'E-commerce', percentage: 42, spend: 735 },
-  { name: 'Conversões', percentage: 30, spend: 525 },
-  { name: 'Tráfego', percentage: 18, spend: 315 },
-  { name: 'Outros', percentage: 10, spend: 175 },
-];
-
-const projections = {
-  spendMonth: 4850,
-  conversions: 520,
-  roas: 3.8,
-  trend: 12,
-};
+import { toast } from 'sonner';
 
 function MetricCard({
   title,
@@ -131,6 +102,48 @@ function MetricCard({
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState('7d');
   const [metric, setMetric] = useState('spend');
+  const [loading, setLoading] = useState(true);
+  const [overviewStats, setOverviewStats] = useState({
+    spend: { value: 0, change: 0 },
+    impressions: { value: 0, change: 0 },
+    clicks: { value: 0, change: 0 },
+    conversions: { value: 0, change: 0 },
+  });
+  const [chartData, setChartData] = useState<Array<{ day: string; spend: number; impressions: number; clicks: number; conversions: number }>>([]);
+  const [campaignBreakdown, setCampaignBreakdown] = useState<Array<{ name: string; percentage: number; spend: number }>>([]);
+  const [projections, setProjections] = useState({
+    spendMonth: 0,
+    conversions: 0,
+    roas: 0,
+    trend: 0,
+  });
+
+  useEffect(() => {
+    fetchAnalyticsData();
+  }, [period]);
+
+  const fetchAnalyticsData = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/analytics?period=${period}`);
+      
+      if (!response.ok) {
+        throw new Error('Erro ao buscar dados de analytics');
+      }
+
+      const data = await response.json();
+      
+      setOverviewStats(data.overview);
+      setChartData(data.chartData || []);
+      setCampaignBreakdown(data.campaignBreakdown || []);
+      setProjections(data.projections || { spendMonth: 0, conversions: 0, roas: 0, trend: 0 });
+    } catch (error) {
+      console.error('Error fetching analytics data:', error);
+      toast.error('Erro ao carregar dados de analytics');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getChartData = () => {
     return chartData.map((item) => ({
@@ -160,7 +173,17 @@ export default function AnalyticsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Select value={period} onValueChange={setPeriod}>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={fetchAnalyticsData}
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Select value={period} onValueChange={(value) => {
+            setPeriod(value);
+          }}>
             <SelectTrigger className="w-[180px]">
               <Calendar className="mr-2 h-4 w-4" />
               <SelectValue />
@@ -176,33 +199,47 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Overview Stats */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          title="Gasto"
-          value={overviewStats.spend.value}
-          change={overviewStats.spend.change}
-          icon={DollarSign}
-          format="currency"
-        />
-        <MetricCard
-          title="Impressões"
-          value={overviewStats.impressions.value}
-          change={overviewStats.impressions.change}
-          icon={Eye}
-        />
-        <MetricCard
-          title="Cliques"
-          value={overviewStats.clicks.value}
-          change={overviewStats.clicks.change}
-          icon={MousePointerClick}
-        />
-        <MetricCard
-          title="Conversões"
-          value={overviewStats.conversions.value}
-          change={overviewStats.conversions.change}
-          icon={Target}
-        />
-      </div>
+      {loading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map(i => (
+            <Card key={i} className="bg-card border-border/50">
+              <CardContent className="p-6">
+                <Skeleton className="h-10 w-10 rounded-lg mb-4" />
+                <Skeleton className="h-8 w-24 mb-2" />
+                <Skeleton className="h-4 w-16" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <MetricCard
+            title="Gasto"
+            value={overviewStats.spend.value}
+            change={overviewStats.spend.change}
+            icon={DollarSign}
+            format="currency"
+          />
+          <MetricCard
+            title="Impressões"
+            value={overviewStats.impressions.value}
+            change={overviewStats.impressions.change}
+            icon={Eye}
+          />
+          <MetricCard
+            title="Cliques"
+            value={overviewStats.clicks.value}
+            change={overviewStats.clicks.change}
+            icon={MousePointerClick}
+          />
+          <MetricCard
+            title="Conversões"
+            value={overviewStats.conversions.value}
+            change={overviewStats.conversions.change}
+            icon={Target}
+          />
+        </div>
+      )}
 
       {/* Main Chart */}
       <Card className="bg-card border-border/50">
@@ -222,9 +259,12 @@ export default function AnalyticsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={getChartData()}>
+          {loading ? (
+            <Skeleton className="h-[300px] w-full" />
+          ) : (
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={getChartData()}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis
                   dataKey="day"
@@ -264,9 +304,10 @@ export default function AnalyticsPage() {
                   dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2 }}
                   activeDot={{ r: 6, fill: 'hsl(var(--primary))' }}
                 />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -280,7 +321,14 @@ export default function AnalyticsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {campaignBreakdown.map((campaign) => (
+            {loading ? (
+              <>
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+              </>
+            ) : campaignBreakdown.length > 0 ? (
+              campaignBreakdown.map((campaign) => (
               <div key={campaign.name} className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium text-foreground">
@@ -297,7 +345,12 @@ export default function AnalyticsPage() {
                   />
                 </div>
               </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Nenhuma campanha com dados no período
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -309,41 +362,62 @@ export default function AnalyticsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-4 grid-cols-2">
-              <div className="rounded-lg bg-muted/30 p-4">
-                <p className="text-sm text-muted-foreground">Gasto Estimado</p>
-                <p className="text-2xl font-bold text-foreground">
-                  R$ {projections.spendMonth.toLocaleString('pt-BR')}
-                </p>
+            {loading ? (
+              <div className="grid gap-4 grid-cols-2">
+                {[1, 2, 3, 4].map(i => (
+                  <Skeleton key={i} className="h-24 w-full" />
+                ))}
               </div>
-              <div className="rounded-lg bg-muted/30 p-4">
-                <p className="text-sm text-muted-foreground">Conversões</p>
-                <p className="text-2xl font-bold text-foreground">
-                  ~{projections.conversions}
-                </p>
-              </div>
-              <div className="rounded-lg bg-muted/30 p-4">
-                <p className="text-sm text-muted-foreground">ROAS Médio</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {projections.roas}x
-                </p>
-              </div>
-              <div className="rounded-lg bg-muted/30 p-4">
-                <p className="text-sm text-muted-foreground">Tendência</p>
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-success" />
-                  <p className="text-2xl font-bold text-success">
-                    +{projections.trend}%
+            ) : (
+              <>
+                <div className="grid gap-4 grid-cols-2">
+                  <div className="rounded-lg bg-muted/30 p-4">
+                    <p className="text-sm text-muted-foreground">Gasto Estimado</p>
+                    <p className="text-2xl font-bold text-foreground">
+                      R$ {projections.spendMonth.toLocaleString('pt-BR')}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted/30 p-4">
+                    <p className="text-sm text-muted-foreground">Conversões</p>
+                    <p className="text-2xl font-bold text-foreground">
+                      ~{projections.conversions}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted/30 p-4">
+                    <p className="text-sm text-muted-foreground">ROAS Médio</p>
+                    <p className="text-2xl font-bold text-foreground">
+                      {projections.roas.toFixed(1)}x
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-muted/30 p-4">
+                    <p className="text-sm text-muted-foreground">Tendência</p>
+                    <div className="flex items-center gap-2">
+                      {projections.trend >= 0 ? (
+                        <TrendingUp className="h-5 w-5 text-success" />
+                      ) : (
+                        <TrendingDown className="h-5 w-5 text-destructive" />
+                      )}
+                      <p className={`text-2xl font-bold ${projections.trend >= 0 ? 'text-success' : 'text-destructive'}`}>
+                        {projections.trend >= 0 ? '+' : ''}{projections.trend.toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={`rounded-lg border p-4 ${
+                  projections.trend >= 0 
+                    ? 'border-success/30 bg-success/5' 
+                    : 'border-warning/30 bg-warning/5'
+                }`}>
+                  <p className={`text-sm ${projections.trend >= 0 ? 'text-success' : 'text-warning'}`}>
+                    {projections.trend >= 0 
+                      ? '✅ Você está no caminho certo para atingir suas metas mensais!'
+                      : '⚠️ Atenção: Tendência negativa detectada. Considere revisar suas campanhas.'
+                    }
                   </p>
                 </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-success/30 bg-success/5 p-4">
-              <p className="text-sm text-success">
-                ✅ Você está no caminho certo para atingir suas metas mensais!
-              </p>
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
