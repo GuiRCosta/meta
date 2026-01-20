@@ -84,7 +84,7 @@ function MetricCard({
   );
 }
 
-function BudgetCard({ className }: { className?: string }) {
+function BudgetCard({ stats, className }: { stats: { monthSpend: number; monthLimit: number; projectedSpend: number }; className?: string }) {
   const percentage = (stats.monthSpend / stats.monthLimit) * 100;
   const projectionSafe = stats.projectedSpend <= stats.monthLimit;
 
@@ -520,7 +520,7 @@ export default function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-3 items-stretch">
         {/* Orçamento Mensal - 2 colunas */}
         <div className="lg:col-span-2 h-full">
-          <BudgetCard className="h-full" />
+          <BudgetCard stats={stats} className="h-full" />
         </div>
 
         {/* Gasto Hoje + ROAS - 1 coluna com Flex para ocupar altura total */}
