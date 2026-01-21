@@ -54,6 +54,15 @@ export async function GET(request: NextRequest) {
     });
 
     if (!queryValidation.success) {
+      logger.error('Validation error for campaigns query', null, {
+        errors: queryValidation.error.errors,
+        params: {
+          status: searchParams.get('status'),
+          search: searchParams.get('search'),
+          limit: searchParams.get('limit'),
+          offset: searchParams.get('offset'),
+        }
+      });
       return NextResponse.json(
         formatZodError(queryValidation.error),
         { status: 400 }

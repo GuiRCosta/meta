@@ -262,8 +262,8 @@ export default function AnalyticsPage() {
           {loading ? (
             <Skeleton className="h-[300px] w-full" />
           ) : (
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[300px] min-h-[300px]">
+              <ResponsiveContainer width="100%" height={300} minHeight={300}>
                 <LineChart data={getChartData()}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis

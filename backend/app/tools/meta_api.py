@@ -463,6 +463,88 @@ async def get_campaign_insights(
                 "conversions": int(insights.get("conversions", 0)) if insights.get("conversions") else 0,
             }
         }
-        
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+async def get_account_insights(
+    date_preset: str = "last_7d",
+    level: str = "account"
+) -> dict:
+    """
+    Busca insights (métricas) da conta Meta Ads.
+
+    Args:
+        date_preset: Período (today, yesterday, last_7d, last_14d, last_30d, etc.)
+        level: Nível dos insights (account, campaign, adset, ad)
+
+    Returns:
+        Dict com métricas da conta
+    """
+    if not settings.meta_access_token:
+        return {"success": False, "error": "Meta API não configurada"}
+
+    try:
+        # Garantir que o Account ID tenha o prefixo 'act_'
+        account_id = settings.meta_ad_account_id
+        if not account_id.startswith('act_'):
+            account_id = f'act_{account_id}'
+
+        url = f"https://graph.facebook.com/v24.0/{account_id}/insights"
+        headers = _get_auth_headers()
+        params = {
+            "date_preset": date_preset,
+            "level": level,
+            "fields": "spend,impressions,clicks,ctr,cpm,cpc,reach,actions,action_values",
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, headers=headers, timeout=30)
+            data = response.json()
+
+        if "error" in data:
+            return {"success": False, "error": data["error"].get("message")}
+
+        # Extrair primeiro item (account level)
+        insights = data.get("data", [{}])[0] if data.get("data") else {}
+
+        # Processar actions (conversões)
+        conversions = 0
+        revenue = 0.0
+
+        if "actions" in insights:
+            for action in insights["actions"]:
+                if action.get("action_type") in ["purchase", "omni_purchase", "add_to_cart"]:
+                    conversions += int(action.get("value", 0))
+
+        if "action_values" in insights:
+            for value in insights["action_values"]:
+                if value.get("action_type") in ["purchase", "omni_purchase"]:
+                    revenue += float(value.get("value", 0))
+
+        # Calcular ROAS
+        spend = float(insights.get("spend", 0))
+        roas = (revenue / spend) if spend > 0 else 0
+
+        return {
+            "success": True,
+            "period": date_preset,
+            "date_start": insights.get("date_start"),
+            "date_stop": insights.get("date_stop"),
+            "insights": {
+                "spend": spend,
+                "impressions": int(insights.get("impressions", 0)),
+                "clicks": int(insights.get("clicks", 0)),
+                "ctr": float(insights.get("ctr", 0)),
+                "cpm": float(insights.get("cpm", 0)),
+                "cpc": float(insights.get("cpc", 0)),
+                "reach": int(insights.get("reach", 0)),
+                "conversions": conversions,
+                "revenue": revenue,
+                "roas": roas,
+            }
+        }
+
     except Exception as e:
         return {"success": False, "error": str(e)}

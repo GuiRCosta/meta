@@ -66,9 +66,14 @@ export async function POST(request: NextRequest) {
     // Chamar backend Python para buscar campanhas da Meta API (incluindo rascunhos)
     const backendUrl = process.env.AGNO_API_URL || 'http://localhost:8000';
 
+    logger.info('Tentando sincronizar campanhas', { backendUrl, userId: session.user.id });
+
     let response: Response;
     try {
-      response = await fetch(`${backendUrl}/api/campaigns/?include_drafts=true`, {
+      const url = `${backendUrl}/api/campaigns/?include_drafts=true`;
+      logger.info('Chamando backend', { url });
+
+      response = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -76,6 +81,8 @@ export async function POST(request: NextRequest) {
         // Timeout de 10 segundos
         signal: AbortSignal.timeout(10000),
       });
+
+      logger.info('Resposta do backend recebida', { status: response.status, ok: response.ok });
     } catch (error) {
       logger.error('Erro ao conectar com backend', error);
       const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';

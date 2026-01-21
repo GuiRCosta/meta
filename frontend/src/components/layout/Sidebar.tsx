@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
@@ -27,13 +28,31 @@ const navigation = [
   { name: 'Documentação', href: '/docs', icon: Book },
 ];
 
-interface SidebarProps {
-  budgetSpent?: number;
-  budgetLimit?: number;
-}
-
-export function Sidebar({ budgetSpent = 2350, budgetLimit = 5000 }: SidebarProps) {
+export function Sidebar() {
   const pathname = usePathname();
+  const [budgetSpent, setBudgetSpent] = useState(0);
+  const [budgetLimit, setBudgetLimit] = useState(5000);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBudgetData = async () => {
+      try {
+        const response = await fetch('/api/dashboard');
+        if (response.ok) {
+          const data = await response.json();
+          setBudgetSpent(data.stats.monthSpend);
+          setBudgetLimit(data.stats.monthLimit);
+        }
+      } catch (error) {
+        console.error('Error fetching budget data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBudgetData();
+  }, []);
+
   const budgetPercentage = Math.min((budgetSpent / budgetLimit) * 100, 100);
   
   const getBudgetColor = (percentage: number) => {
@@ -92,23 +111,33 @@ export function Sidebar({ budgetSpent = 2350, budgetLimit = 5000 }: SidebarProps
               <span className="text-xs font-medium text-sidebar-foreground/70">
                 💰 Orçamento Mensal
               </span>
-              <span className={cn('text-xs font-bold', getBudgetColor(budgetPercentage))}>
-                {budgetPercentage.toFixed(0)}%
-              </span>
+              {!loading && (
+                <span className={cn('text-xs font-bold', getBudgetColor(budgetPercentage))}>
+                  {budgetPercentage.toFixed(0)}%
+                </span>
+              )}
             </div>
             <div className="mb-2">
-              <span className="text-lg font-bold text-sidebar-foreground">
-                R$ {budgetSpent.toLocaleString('pt-BR')}
-              </span>
-              <span className="text-sm text-sidebar-foreground/50">
-                {' '}/ R$ {budgetLimit.toLocaleString('pt-BR')}
-              </span>
+              {loading ? (
+                <div className="h-7 w-32 animate-pulse rounded bg-sidebar-border" />
+              ) : (
+                <>
+                  <span className="text-lg font-bold text-sidebar-foreground">
+                    R$ {budgetSpent.toLocaleString('pt-BR')}
+                  </span>
+                  <span className="text-sm text-sidebar-foreground/50">
+                    {' '}/ R$ {budgetLimit.toLocaleString('pt-BR')}
+                  </span>
+                </>
+              )}
             </div>
             <div className="relative h-2 w-full overflow-hidden rounded-full bg-sidebar-border">
-              <div
-                className={cn('h-full transition-all', getProgressColor(budgetPercentage))}
-                style={{ width: `${budgetPercentage}%` }}
-              />
+              {!loading && (
+                <div
+                  className={cn('h-full transition-all', getProgressColor(budgetPercentage))}
+                  style={{ width: `${budgetPercentage}%` }}
+                />
+              )}
             </div>
           </div>
         </div>

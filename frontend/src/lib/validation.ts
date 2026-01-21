@@ -121,7 +121,7 @@ export const getCampaignsQuerySchema = z.object({
   limit: z.coerce.number()
     .int('Limite deve ser um número inteiro')
     .min(1, 'Limite mínimo é 1')
-    .max(100, 'Limite máximo é 100')
+    .max(500, 'Limite máximo é 500')
     .optional()
     .default(50),
   offset: z.coerce.number()

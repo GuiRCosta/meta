@@ -11,6 +11,7 @@ from app.tools.meta_api import (
     create_campaign,
     update_campaign_status,
     get_campaign_insights,
+    get_account_insights,
     duplicate_campaign,
 )
 
@@ -159,7 +160,7 @@ async def get_insights(
 async def duplicate(campaign_id: str, request: DuplicateCampaignRequest):
     """
     Duplica uma campanha existente na Meta API usando o endpoint /copies.
-    
+
     Args:
         campaign_id: ID da campanha original no Meta
         request: Request com opções de duplicação
@@ -170,8 +171,40 @@ async def duplicate(campaign_id: str, request: DuplicateCampaignRequest):
         deep_copy=request.deep_copy,
         status_option=request.status_option
     )
-    
+
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["error"])
-    
+
+    return result
+
+
+@router.get("/insights/account")
+async def get_account_insights_endpoint(date_preset: str = "last_7d"):
+    """
+    Busca insights/métricas da conta Meta Ads (nível de conta).
+
+    Períodos válidos:
+    - today, yesterday
+    - last_7d, last_14d, last_30d
+    - this_month, last_month
+
+    Retorna métricas agregadas de todas as campanhas.
+    """
+    valid_presets = [
+        "today", "yesterday",
+        "last_7d", "last_14d", "last_30d",
+        "this_month", "last_month"
+    ]
+
+    if date_preset not in valid_presets:
+        raise HTTPException(
+            status_code=400,
+            detail=f"date_preset deve ser um de: {', '.join(valid_presets)}"
+        )
+
+    result = await get_account_insights(date_preset)
+
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+
     return result
