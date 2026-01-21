@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createServerClient } from '@/lib/supabase';
+import { withAuthAndRateLimit } from '@/lib/api-middleware';
 import { auth } from '@/lib/auth';
-import { supabase } from '@/lib/supabase';
+import { logger } from '@/lib/logger';
 
 /**
  * POST /api/upload - Upload de mídia para Supabase Storage
- * 
+ *
  * Faz upload do arquivo para o bucket 'campaign-media' do Supabase.
  * Retorna a URL pública do arquivo.
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    // Autenticação + Rate Limiting SENSÍVEL (3 req/hora para uploads)
+    const result = await withAuthAndRateLimit(request, 'sensitive');
+    if (result instanceof NextResponse) return result;
+    const { user } = result;
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -52,11 +53,14 @@ export async function POST(request: NextRequest) {
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 9);
     const extension = file.name.split('.').pop() || (isImage ? 'jpg' : 'mp4');
-    const fileName = `${session.user.id}/${timestamp}_${randomId}.${extension}`;
+    const fileName = `${user.id}/${timestamp}_${randomId}.${extension}`;
 
     // Convert File to ArrayBuffer then to Buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    // Create Supabase client
+    const supabase = createServerClient();
 
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage
@@ -68,7 +72,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (error) {
-      console.error('Supabase upload error:', error);
+      logger.error('Supabase upload error', error);
       return NextResponse.json(
         { error: `Erro no upload: ${error.message}` },
         { status: 500 }
@@ -105,7 +109,7 @@ export async function POST(request: NextRequest) {
       });
     }
   } catch (error) {
-    console.error('Error uploading media:', error);
+    logger.error('Error uploading media', error);
     return NextResponse.json(
       { error: 'Erro ao fazer upload do arquivo' },
       { status: 500 }
@@ -142,13 +146,16 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // Create Supabase client
+    const supabase = createServerClient();
+
     // Delete from Supabase Storage
     const { error } = await supabase.storage
       .from('campaign-media')
       .remove([path]);
 
     if (error) {
-      console.error('Supabase delete error:', error);
+      logger.error('Supabase delete error', error);
       return NextResponse.json(
         { error: `Erro ao deletar: ${error.message}` },
         { status: 500 }
@@ -160,7 +167,7 @@ export async function DELETE(request: NextRequest) {
       message: 'Arquivo deletado com sucesso!',
     });
   } catch (error) {
-    console.error('Error deleting media:', error);
+    logger.error('Error deleting media', error);
     return NextResponse.json(
       { error: 'Erro ao deletar arquivo' },
       { status: 500 }

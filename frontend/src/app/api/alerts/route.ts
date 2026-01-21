@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { withAuthAndRateLimit } from '@/lib/api-middleware';
+import { logger } from '@/lib/logger';
 
 /**
  * GET /api/alerts - Lista alertas do usuário
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    // Autenticação + Rate Limiting (20 req/min)
+    const result = await withAuthAndRateLimit(request, 'api');
+    if (result instanceof NextResponse) return result;
+    const { user } = result;
 
     const { searchParams } = new URL(request.url);
     const unreadOnly = searchParams.get('unread') === 'true';
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     // Buscar alertas
     const alerts = await prisma.alert.findMany({
       where: {
-        userId: session.user.id,
+        userId: user.id,
         ...(unreadOnly ? { read: false } : {}),
       },
       orderBy: { createdAt: 'desc' },
@@ -32,10 +32,10 @@ export async function GET(request: NextRequest) {
     // Contar total e não lidos
     const [total, unreadCount] = await Promise.all([
       prisma.alert.count({
-        where: { userId: session.user.id },
+        where: { userId: user.id },
       }),
       prisma.alert.count({
-        where: { userId: session.user.id, read: false },
+        where: { userId: user.id, read: false },
       }),
     ]);
 
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error) {
-    console.error('Error fetching alerts:', error);
+    logger.error('Error fetching alerts', error);
     return NextResponse.json(
       { error: 'Erro ao buscar alertas' },
       { status: 500 }
@@ -62,11 +62,10 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    // Autenticação + Rate Limiting (20 req/min)
+    const result = await withAuthAndRateLimit(request, 'api');
+    if (result instanceof NextResponse) return result;
+    const { user } = result;
 
     const body = await request.json();
 
@@ -99,7 +98,7 @@ export async function POST(request: NextRequest) {
     // Criar alerta
     const alert = await prisma.alert.create({
       data: {
-        userId: session.user.id,
+        userId: user.id,
         type: body.type,
         priority: body.priority,
         title: body.title,
@@ -114,7 +113,7 @@ export async function POST(request: NextRequest) {
       alert 
     }, { status: 201 });
   } catch (error) {
-    console.error('Error creating alert:', error);
+    logger.error('Error creating alert', error);
     return NextResponse.json(
       { error: 'Erro ao criar alerta' },
       { status: 500 }
@@ -127,19 +126,18 @@ export async function POST(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    // Autenticação + Rate Limiting (20 req/min)
+    const result = await withAuthAndRateLimit(request, 'api');
+    if (result instanceof NextResponse) return result;
+    const { user } = result;
 
     const body = await request.json();
 
     // Marcar todos como lidos
     if (body.markAllRead) {
       await prisma.alert.updateMany({
-        where: { 
-          userId: session.user.id,
+        where: {
+          userId: user.id,
           read: false,
         },
         data: { read: true },
@@ -154,8 +152,8 @@ export async function PATCH(request: NextRequest) {
     // Marcar IDs específicos como lidos
     if (body.alertIds && Array.isArray(body.alertIds)) {
       await prisma.alert.updateMany({
-        where: { 
-          userId: session.user.id,
+        where: {
+          userId: user.id,
           id: { in: body.alertIds },
         },
         data: { read: true },
@@ -172,7 +170,7 @@ export async function PATCH(request: NextRequest) {
       { status: 400 }
     );
   } catch (error) {
-    console.error('Error updating alerts:', error);
+    logger.error('Error updating alerts', error);
     return NextResponse.json(
       { error: 'Erro ao atualizar alertas' },
       { status: 500 }

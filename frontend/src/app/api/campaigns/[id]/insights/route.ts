@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
+import { withAuthAndRateLimit } from '@/lib/api-middleware';
 
 /**
  * GET /api/campaigns/[id]/insights - Busca métricas/insights de uma campanha
@@ -14,11 +15,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    // Autenticação + Rate Limiting (20 req/min)
+    const result = await withAuthAndRateLimit(request, 'api');
+    if (result instanceof NextResponse) return result;
+    const { user } = result;
 
     const { id } = await params;
     const { searchParams } = new URL(request.url);
@@ -28,7 +28,7 @@ export async function GET(
     const campaign = await prisma.campaign.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId: user.id,
       },
     });
 
@@ -157,7 +157,7 @@ export async function GET(
       chartData,
     });
   } catch (error) {
-    console.error('Error fetching campaign insights:', error);
+    logger.error('Error fetching campaign insights', error);
     return NextResponse.json(
       { error: 'Erro ao buscar insights da campanha' },
       { status: 500 }

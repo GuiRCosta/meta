@@ -1,6 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { rateLimiters } from '@/lib/rate-limit';
+import { logger } from '@/lib/logger';
+import { CampaignStatus } from '@prisma/client';
+
+/**
+ * Mapeia status do Meta para enum CampaignStatus
+ * Prioriza effective_status (mais preciso) sobre status
+ */
+function mapMetaStatus(metaStatus?: string, effectiveStatus?: string): CampaignStatus {
+  // Priorizar effective_status (estado real da campanha)
+  if (effectiveStatus === 'PREVIEW' || effectiveStatus === 'DRAFT') {
+    return 'DRAFT';
+  }
+  if (metaStatus === 'PREPAUSED') {
+    return 'PREPAUSED';
+  }
+  if (effectiveStatus === 'ACTIVE') {
+    return 'ACTIVE';
+  }
+  if (effectiveStatus === 'PAUSED' || metaStatus === 'PAUSED') {
+    return 'PAUSED';
+  }
+  if (effectiveStatus === 'ARCHIVED' || metaStatus === 'ARCHIVED') {
+    return 'ARCHIVED';
+  }
+  // Fallback para PAUSED se status desconhecido
+  return 'PAUSED';
+}
 
 /**
  * POST /api/sync - Sincroniza campanhas do Meta para o banco local
@@ -8,17 +36,39 @@ import { prisma } from '@/lib/db';
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    // Chamar backend Python para buscar campanhas da Meta API
+    // Rate limiting: 10 requests per 5 minutes
+    const identifier = session.user.id;
+    const rateLimit = rateLimiters.sync.limit(identifier);
+
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        {
+          error: 'Muitas requisições de sincronização. Aguarde alguns minutos.',
+          retry_after: rateLimit.reset,
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': String(rateLimit.limit),
+            'X-RateLimit-Remaining': String(rateLimit.remaining),
+            'X-RateLimit-Reset': String(rateLimit.reset),
+            'Retry-After': String(rateLimit.reset),
+          },
+        }
+      );
+    }
+
+    // Chamar backend Python para buscar campanhas da Meta API (incluindo rascunhos)
     const backendUrl = process.env.AGNO_API_URL || 'http://localhost:8000';
-    
+
     let response: Response;
     try {
-      response = await fetch(`${backendUrl}/api/campaigns/`, {
+      response = await fetch(`${backendUrl}/api/campaigns/?include_drafts=true`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -27,7 +77,7 @@ export async function POST(request: NextRequest) {
         signal: AbortSignal.timeout(10000),
       });
     } catch (error) {
-      console.error('Erro ao conectar com backend:', error);
+      logger.error('Erro ao conectar com backend', error);
       const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
       
       if (errorMsg.includes('fetch failed') || errorMsg.includes('ECONNREFUSED') || errorMsg.includes('timeout')) {
@@ -57,9 +107,9 @@ export async function POST(request: NextRequest) {
         const errorText = await response.text().catch(() => 'Erro desconhecido');
         errorData = { detail: errorText };
       }
-      
-      console.error('Erro do backend:', errorData);
-      
+
+      logger.error('Erro do backend', null, { errorData, status: response.status });
+
       // Tratar rate limiting especificamente
       const errorMessage = errorData.detail || errorData.error || 'Erro desconhecido';
       
@@ -88,8 +138,8 @@ export async function POST(request: NextRequest) {
     // Verificar se há erro na resposta mesmo com status 200
     if (metaData.error || !metaData.success) {
       const errorMsg = metaData.error || metaData.detail || 'Erro ao buscar campanhas da Meta API';
-      console.error('Erro na resposta do backend:', errorMsg);
-      
+      logger.error('Erro na resposta do backend', null, { error: errorMsg });
+
       // Se for rate limiting
       if (errorMsg.includes('requisições') || errorMsg.includes('rate limit')) {
         return NextResponse.json(
@@ -119,6 +169,12 @@ export async function POST(request: NextRequest) {
 
     for (const metaCampaign of campaigns) {
       try {
+        // Mapear status do Meta para nosso enum
+        const mappedStatus = mapMetaStatus(
+          metaCampaign.status,
+          metaCampaign.effective_status
+        );
+
         // Buscar ou criar campanha no banco
         await prisma.campaign.upsert({
           where: {
@@ -126,7 +182,7 @@ export async function POST(request: NextRequest) {
           },
           update: {
             name: metaCampaign.name,
-            status: metaCampaign.status,
+            status: mappedStatus,
             objective: metaCampaign.objective || 'UNKNOWN',
             dailyBudget: metaCampaign.daily_budget ? Math.round(metaCampaign.daily_budget / 100) : null,
             lifetimeBudget: metaCampaign.lifetime_budget ? Math.round(metaCampaign.lifetime_budget / 100) : null,
@@ -136,7 +192,7 @@ export async function POST(request: NextRequest) {
             userId: session.user.id,
             metaId: metaCampaign.id,
             name: metaCampaign.name,
-            status: metaCampaign.status,
+            status: mappedStatus,
             objective: metaCampaign.objective || 'UNKNOWN',
             dailyBudget: metaCampaign.daily_budget ? Math.round(metaCampaign.daily_budget / 100) : null,
             lifetimeBudget: metaCampaign.lifetime_budget ? Math.round(metaCampaign.lifetime_budget / 100) : null,
@@ -146,7 +202,7 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         const errorMsg = `Erro ao sincronizar ${metaCampaign.name}: ${error instanceof Error ? error.message : 'Erro desconhecido'}`;
         errors.push(errorMsg);
-        console.error(errorMsg, error);
+        logger.error('Erro ao sincronizar campanha', error, { campaignName: metaCampaign.name });
       }
     }
 
@@ -157,7 +213,7 @@ export async function POST(request: NextRequest) {
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
-    console.error('Error syncing campaigns:', error);
+    logger.error('Error syncing campaigns', error);
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     
     // Verificar se é erro de conexão

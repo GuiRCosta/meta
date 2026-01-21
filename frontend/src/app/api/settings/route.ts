@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { updateSettingsSchema, formatZodError } from '@/lib/validation';
+import { logger } from '@/lib/logger';
 
 /**
  * GET /api/settings - Busca configurações do usuário
@@ -30,7 +32,7 @@ export async function GET() {
 
     return NextResponse.json({ settings });
   } catch (error) {
-    console.error('Error fetching settings:', error);
+    logger.error('Error fetching settings', error);
     return NextResponse.json(
       { error: 'Erro ao buscar configurações' },
       { status: 500 }
@@ -51,36 +53,16 @@ export async function PATCH(request: NextRequest) {
 
     const body = await request.json();
 
-    // Campos permitidos para atualização
-    const allowedFields = [
-      'monthlyBudgetLimit',
-      'alertAt50Percent',
-      'alertAt80Percent',
-      'alertAt100Percent',
-      'alertOnProjectedOverrun',
-      'conversionGoal',
-      'roasGoal',
-      'cpcMaxLimit',
-      'ctrMinLimit',
-      'whatsappEnabled',
-      'whatsappNumber',
-      'dailyReportTime',
-      'sendDailyReports',
-      'sendImmediateAlerts',
-      'sendSuggestions',
-      'sendStatusChanges',
-      'metaAccessToken',
-      'metaAdAccountId',
-      'metaPageId',
-    ];
-
-    // Filtrar apenas campos permitidos
-    const updateData: Record<string, unknown> = {};
-    for (const field of allowedFields) {
-      if (body[field] !== undefined) {
-        updateData[field] = body[field];
-      }
+    // Validar input com Zod
+    const validation = updateSettingsSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        formatZodError(validation.error),
+        { status: 400 }
+      );
     }
+
+    const updateData = validation.data;
 
     // Upsert: criar se não existir, atualizar se existir
     const settings = await prisma.settings.upsert({
@@ -98,7 +80,7 @@ export async function PATCH(request: NextRequest) {
       settings 
     });
   } catch (error) {
-    console.error('Error updating settings:', error);
+    logger.error('Error updating settings', error);
     return NextResponse.json(
       { error: 'Erro ao atualizar configurações' },
       { status: 500 }

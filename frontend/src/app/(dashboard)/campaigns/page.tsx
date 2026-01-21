@@ -59,7 +59,7 @@ interface Campaign {
   id: string;
   metaId?: string;
   name: string;
-  status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
+  status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED' | 'DRAFT' | 'PREPAUSED';
   objective: string;
   spend: number;
   impressions: number;
@@ -68,12 +68,36 @@ interface Campaign {
   roas?: number | null;
 }
 
-const getStatusBadge = (status: 'ACTIVE' | 'PAUSED') => {
+const getStatusBadge = (status: 'ACTIVE' | 'PAUSED' | 'DRAFT' | 'PREPAUSED' | 'ARCHIVED') => {
   if (status === 'ACTIVE') {
     return (
       <Badge className="bg-success/20 text-success border-success/30 hover:bg-success/30">
         <span className="mr-1 h-1.5 w-1.5 rounded-full bg-success" />
         Ativa
+      </Badge>
+    );
+  }
+  if (status === 'DRAFT') {
+    return (
+      <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-700">
+        <span className="mr-1 h-1.5 w-1.5 rounded-full bg-blue-500" />
+        Rascunho
+      </Badge>
+    );
+  }
+  if (status === 'PREPAUSED') {
+    return (
+      <Badge variant="secondary" className="bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/20 dark:text-orange-400 dark:border-orange-700">
+        <span className="mr-1 h-1.5 w-1.5 rounded-full bg-orange-500" />
+        Pré-pausada
+      </Badge>
+    );
+  }
+  if (status === 'ARCHIVED') {
+    return (
+      <Badge variant="secondary" className="bg-gray-100 text-gray-600 border-gray-300 dark:bg-gray-900/20 dark:text-gray-400 dark:border-gray-700">
+        <span className="mr-1 h-1.5 w-1.5 rounded-full bg-gray-500" />
+        Arquivada
       </Badge>
     );
   }
@@ -175,7 +199,7 @@ export default function CampaignsPage() {
           id: camp.id,
           metaId: camp.metaId,
           name: camp.name,
-          status: camp.status as 'ACTIVE' | 'PAUSED' | 'ARCHIVED',
+          status: camp.status as 'ACTIVE' | 'PAUSED' | 'ARCHIVED' | 'DRAFT' | 'PREPAUSED',
           objective: camp.objective || 'UNKNOWN',
           spend: camp.spend || 0,
           impressions: camp.impressions || 0,

@@ -73,8 +73,27 @@ Ela só busca campos básicos na linha 42:
 "fields": "id,name,objective,status,effective_status,daily_budget,lifetime_budget,special_ad_categories,created_time,updated_time"
 ```
 
+### Fluxo de Dados Atual:
+```
+Meta API → list_campaigns() → Campos básicos → Tabela Campaign ✅
+                                                      ↓
+Dashboard ← /api/dashboard ← Prisma ← Campaign.metrics (VAZIA) ❌
+Analytics ← /api/analytics ← Prisma ← Campaign.metrics (VAZIA) ❌
+```
+
+**CONFIRMADO**: Dashboard e Analytics leem APENAS do banco de dados (Prisma), **NÃO** da Meta API.
+
+### Endpoints Analisados:
+1. **`/api/dashboard`** (frontend/src/app/api/dashboard/route.ts:17-32)
+   - Busca campanhas com `metrics` do banco
+   - Calcula: spend, impressões, cliques, CTR, ROAS
+
+2. **`/api/analytics`** (frontend/src/app/api/analytics/route.ts:50-66)
+   - Busca campanhas com `metrics` do banco
+   - Calcula: overview, gráficos, breakdown, projeções
+
 ### Solução:
-Adicionar busca de insights (métricas) por campanha.
+Criar endpoint para sincronizar insights da Meta API → Tabela `CampaignMetric`.
 
 ---
 

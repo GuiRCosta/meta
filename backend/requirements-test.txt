@@ -1,0 +1,19 @@
+# Testing dependencies for backend
+# Install with: pip install -r requirements-test.txt
+
+# Core testing framework
+pytest==8.3.4
+pytest-asyncio==0.25.2
+pytest-cov==6.0.0
+pytest-mock==3.14.0
+
+# Test utilities
+httpx==0.28.1  # Already in requirements.txt, but needed for testing
+faker==33.3.0  # For generating test data
+
+# Code quality
+pytest-xdist==3.6.1  # Run tests in parallel
+pytest-watch==4.2.0  # Watch mode for tests
+
+# Coverage reporting
+coverage[toml]==7.6.10

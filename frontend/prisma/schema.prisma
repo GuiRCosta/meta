@@ -79,16 +79,25 @@ model Settings {
 // CAMPAIGNS & ADS
 // ==========================================
 
+// Campaign Status Enum
+enum CampaignStatus {
+  ACTIVE      // Campanha ativa no Meta
+  PAUSED      // Campanha pausada
+  ARCHIVED    // Campanha arquivada (não aparece no frontend)
+  DRAFT       // Campanha em rascunho (não publicada)
+  PREPAUSED   // Campanha pré-pausada (aguardando)
+}
+
 // Campaign synced from Meta
 model Campaign {
   id              String           @id @default(uuid()) @db.Uuid
   metaId          String           @unique @map("meta_id")
   userId          String           @map("user_id") @db.Uuid
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   name            String
   objective       String
-  status          String           @default("PAUSED")
+  status          CampaignStatus   @default(PAUSED)
   dailyBudget     Float?           @map("daily_budget")
   lifetimeBudget  Float?           @map("lifetime_budget")
   

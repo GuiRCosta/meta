@@ -1,29 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { auth } from '@/lib/auth';
+import { bulkActionSchema, formatZodError } from '@/lib/validation';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
+    // Verificar autenticação
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    }
+
     const body = await request.json();
-    const { campaignIds, action } = body;
 
-    if (!campaignIds || !Array.isArray(campaignIds) || campaignIds.length === 0) {
+    // Validar input com Zod
+    const validation = bulkActionSchema.safeParse(body);
+    if (!validation.success) {
       return NextResponse.json(
-        { error: 'Nenhuma campanha selecionada' },
+        formatZodError(validation.error),
         { status: 400 }
       );
     }
 
-    if (!['ACTIVE', 'PAUSED', 'ARCHIVED'].includes(action)) {
-      return NextResponse.json(
-        { error: 'Ação inválida' },
-        { status: 400 }
-      );
-    }
+    const { campaignIds, action } = validation.data;
 
-    // Atualizar status das campanhas no banco local
+    // Atualizar status das campanhas no banco local (apenas do usuário logado)
     const updateResult = await prisma.campaign.updateMany({
       where: {
         id: { in: campaignIds },
+        userId: session.user.id, // Segurança: apenas campanhas do usuário
       },
       data: {
         status: action,
@@ -56,7 +62,7 @@ export async function POST(request: NextRequest) {
       updatedCount: count,
     });
   } catch (error) {
-    console.error('Error in bulk action:', error);
+    logger.error('Error in bulk action', error);
     return NextResponse.json(
       { error: 'Erro ao executar ação em lote' },
       { status: 500 }

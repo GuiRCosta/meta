@@ -69,3 +69,6 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+
+# Test scripts with hardcoded credentials
+test_meta_sync.py

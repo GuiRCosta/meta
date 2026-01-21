@@ -7,6 +7,16 @@ import httpx
 from app.config import settings
 
 
+def _get_auth_headers() -> dict:
+    """
+    Returns authorization headers for Meta API requests.
+    Using Authorization header is more secure than query params.
+    """
+    return {
+        "Authorization": f"Bearer {settings.meta_access_token}",
+    }
+
+
 async def list_campaigns(
     status: Optional[str] = None,
     limit: int = 50,
@@ -37,8 +47,13 @@ async def list_campaigns(
             account_id = f'act_{account_id}'
         
         url = f"https://graph.facebook.com/v24.0/{account_id}/campaigns"
+
+        # Use Authorization header instead of query param for security
+        headers = {
+            "Authorization": f"Bearer {settings.meta_access_token}",
+        }
+
         params = {
-            "access_token": settings.meta_access_token,
             "fields": "id,name,objective,status,effective_status,daily_budget,lifetime_budget,special_ad_categories,created_time,updated_time",
             "limit": limit,
         }
@@ -55,7 +70,7 @@ async def list_campaigns(
         
         async with httpx.AsyncClient() as client:
             # Primeira requisição
-            response = await client.get(url, params=params, timeout=30)
+            response = await client.get(url, params=params, headers=headers, timeout=30)
             data = response.json()
             
             if "error" in data:
@@ -163,13 +178,13 @@ async def get_campaign_details(campaign_id: str) -> dict:
     
     try:
         url = f"https://graph.facebook.com/v24.0/{campaign_id}"
+        headers = _get_auth_headers()
         params = {
-            "access_token": settings.meta_access_token,
             "fields": "id,name,objective,status,daily_budget,lifetime_budget,special_ad_categories,created_time,adsets{id,name,status,daily_budget,targeting},ads{id,name,status,creative}"
         }
-        
+
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params, timeout=30)
+            response = await client.get(url, params=params, headers=headers, timeout=30)
             data = response.json()
         
         if "error" in data:
@@ -211,10 +226,10 @@ async def create_campaign(
             account_id = f'act_{account_id}'
         
         url = f"https://graph.facebook.com/v24.0/{account_id}/campaigns"
-        
+        headers = _get_auth_headers()
+
         # Construir parâmetros
         data = {
-            "access_token": settings.meta_access_token,
             "name": name,
             "objective": objective,
             "status": status,
@@ -233,9 +248,9 @@ async def create_campaign(
             # Meta API requer special_ad_categories, mesmo que vazio
             # Enviar como JSON quando for array (vazio ou não)
             data["special_ad_categories"] = categories
-            
+
             # Usar JSON para arrays funcionarem corretamente
-            response = await client.post(url, json=data, timeout=30)
+            response = await client.post(url, json=data, headers=headers, timeout=30)
             result = response.json()
         
         if "error" in result:
@@ -267,13 +282,13 @@ async def update_campaign_status(campaign_id: str, status: str) -> dict:
     
     try:
         url = f"https://graph.facebook.com/v24.0/{campaign_id}"
+        headers = _get_auth_headers()
         data = {
-            "access_token": settings.meta_access_token,
             "status": status,
         }
-        
+
         async with httpx.AsyncClient() as client:
-            response = await client.post(url, data=data, timeout=30)
+            response = await client.post(url, data=data, headers=headers, timeout=30)
             result = response.json()
         
         if "error" in result:
@@ -314,13 +329,9 @@ async def duplicate_campaign(
         # Garantir que o Account ID tenha o prefixo 'act_' se necessário
         # Para campaigns, não precisa do prefixo, mas para ad accounts sim
         url = f"https://graph.facebook.com/v24.0/{campaign_id}/copies"
-        
+        headers = _get_auth_headers()
+
         # Preparar parâmetros - Meta API aceita form-data ou JSON
-        # Usando form-data como no exemplo CURL
-        params = {
-            "access_token": settings.meta_access_token,
-        }
-        
         data = {
             "deep_copy": "true" if deep_copy else "false",
             "status_option": status_option,
@@ -337,7 +348,7 @@ async def duplicate_campaign(
         
         async with httpx.AsyncClient() as client:
             # Meta API /copies aceita form-data
-            response = await client.post(url, params=params, data=data, timeout=30)
+            response = await client.post(url, data=data, headers=headers, timeout=30)
             result = response.json()
         
         if "error" in result:
@@ -423,14 +434,14 @@ async def get_campaign_insights(
     
     try:
         url = f"https://graph.facebook.com/v24.0/{campaign_id}/insights"
+        headers = _get_auth_headers()
         params = {
-            "access_token": settings.meta_access_token,
             "fields": "impressions,clicks,spend,cpc,cpm,ctr,reach,conversions,cost_per_conversion",
             "date_preset": date_preset,
         }
-        
+
         async with httpx.AsyncClient() as client:
-            response = await client.get(url, params=params, timeout=30)
+            response = await client.get(url, params=params, headers=headers, timeout=30)
             data = response.json()
         
         if "error" in data:

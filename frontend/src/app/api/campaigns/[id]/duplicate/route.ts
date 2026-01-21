@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { duplicateCampaignSchema, formatZodError } from '@/lib/validation';
+import { logger } from '@/lib/logger';
 
 /**
  * POST /api/campaigns/[id]/duplicate - Duplica uma campanha
@@ -19,7 +21,17 @@ export async function POST(
 
     const { id } = await params;
     const body = await request.json();
-    const count = body.count || 1;
+
+    // Validar input com Zod
+    const validation = duplicateCampaignSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        formatZodError(validation.error),
+        { status: 400 }
+      );
+    }
+
+    const { count } = validation.data;
 
     // Buscar campanha original do banco local
     const original = await prisma.campaign.findFirst({
@@ -134,7 +146,7 @@ export async function POST(
           },
         });
       } catch (error) {
-        console.error(`Erro ao duplicar campanha ${i + 1}:`, error);
+        logger.error(`Erro ao duplicar campanha ${i + 1}`, error);
         // Continuar tentando as próximas mesmo se uma falhar
       }
     }
@@ -152,7 +164,7 @@ export async function POST(
       campaigns: duplicatedCampaigns,
     });
   } catch (error) {
-    console.error('Error duplicating campaign:', error);
+    logger.error('Error duplicating campaign', error);
     return NextResponse.json(
       { error: `Erro ao duplicar campanha: ${error instanceof Error ? error.message : 'Erro desconhecido'}` },
       { status: 500 }

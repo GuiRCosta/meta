@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { withAuthAndRateLimit } from '@/lib/api-middleware';
+import { logger } from '@/lib/logger';
 
 /**
  * GET /api/analytics - Busca dados agregados para analytics
- * 
+ *
  * Query params:
  * - period: '7d' | '14d' | '30d' | '90d' (default: '7d')
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    // Autenticação + Rate Limiting (20 req/min)
+    const result = await withAuthAndRateLimit(request, 'api');
+    if (result instanceof NextResponse) return result;
+    const { user } = result;
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '7d';
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     // Buscar todas as campanhas do usuário (não arquivadas)
     const campaigns = await prisma.campaign.findMany({
       where: {
-        userId: session.user.id,
+        userId: user.id,
         status: { not: 'ARCHIVED' },
       },
       include: {
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
     const previousMetrics = await prisma.campaignMetric.findMany({
       where: {
         campaign: {
-          userId: session.user.id,
+          userId: user.id,
           status: { not: 'ARCHIVED' },
         },
         date: {
@@ -207,7 +207,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching analytics data:', error);
+    logger.error('Error fetching analytics data', error);
     return NextResponse.json(
       { error: 'Erro ao buscar dados de analytics' },
       { status: 500 }

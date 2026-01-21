@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { logger } from '@/lib/logger';
 
 // Backend API URL (Agno Agent)
 const AGNO_API_URL = process.env.AGNO_API_URL || 'http://localhost:8000';
@@ -71,12 +72,12 @@ export async function POST(request: NextRequest) {
           },
         });
       }
-      
+
       // Se o backend não respondeu OK, usa fallback
-      console.warn('Backend não disponível, usando fallback');
+      logger.info('Backend não disponível, usando fallback');
     } catch (backendError) {
       // Backend não está rodando, usar mock
-      console.warn('Não foi possível conectar ao backend:', backendError);
+      logger.info('Não foi possível conectar ao backend', { error: backendError });
     }
 
     // Fallback: Mock AI response quando backend não está disponível
@@ -251,7 +252,7 @@ Como posso te ajudar hoje?`;
       },
     });
   } catch (error) {
-    console.error('Error in agent chat:', error);
+    logger.error('Error in agent chat', error);
     return NextResponse.json(
       { error: 'Erro ao processar mensagem' },
       { status: 500 }

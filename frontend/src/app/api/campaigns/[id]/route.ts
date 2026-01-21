@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { updateCampaignSchema, formatZodError } from '@/lib/validation';
+import { withAuthAndRateLimit } from '@/lib/api-middleware';
+import { logger } from '@/lib/logger';
 
 /**
  * GET /api/campaigns/[id] - Busca uma campanha específica
@@ -10,11 +12,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    // Autenticação + Rate Limiting (20 req/min)
+    const result = await withAuthAndRateLimit(request, 'api');
+    if (result instanceof NextResponse) return result;
+    const { user } = result;
 
     const { id } = await params;
 
@@ -22,7 +23,7 @@ export async function GET(
     const campaign = await prisma.campaign.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId: user.id,
       },
       include: {
         adSets: {
@@ -67,7 +68,7 @@ export async function GET(
       ? (totalMetrics.spend / totalMetrics.impressions) * 1000 
       : 0;
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       campaign: {
         ...campaign,
         totalMetrics: {
@@ -79,7 +80,7 @@ export async function GET(
       }
     });
   } catch (error) {
-    console.error('Error fetching campaign:', error);
+    logger.error('Error fetching campaign', error);
     return NextResponse.json(
       { error: 'Erro ao buscar campanha' },
       { status: 500 }
@@ -95,20 +96,28 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    // Autenticação + Rate Limiting (20 req/min)
+    const result = await withAuthAndRateLimit(request, 'api');
+    if (result instanceof NextResponse) return result;
+    const { user } = result;
 
     const { id } = await params;
     const body = await request.json();
+
+    // Validar input com Zod
+    const validation = updateCampaignSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        formatZodError(validation.error),
+        { status: 400 }
+      );
+    }
 
     // Verificar se campanha existe e pertence ao usuário
     const existing = await prisma.campaign.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId: user.id,
       },
     });
 
@@ -119,15 +128,7 @@ export async function PATCH(
       );
     }
 
-    // Campos permitidos para atualização local
-    const allowedFields = ['name', 'status', 'dailyBudget', 'lifetimeBudget'];
-    const updateData: Record<string, unknown> = {};
-    
-    for (const field of allowedFields) {
-      if (body[field] !== undefined) {
-        updateData[field] = body[field];
-      }
-    }
+    const updateData = validation.data;
 
     // Se status mudou e tem metaId, atualizar na Meta API
     if (body.status && body.status !== existing.status && existing.metaId) {
@@ -144,11 +145,11 @@ export async function PATCH(
 
         if (!metaResponse.ok) {
           const error = await metaResponse.json();
-          console.error('Erro ao atualizar na Meta API:', error);
+          logger.error('Erro ao atualizar na Meta API', null, { error });
           // Continuar mesmo se falhar na Meta, atualizar localmente
         }
       } catch (error) {
-        console.error('Erro ao chamar Meta API:', error);
+        logger.error('Erro ao chamar Meta API', error);
         // Continuar mesmo se falhar na Meta, atualizar localmente
       }
     }
@@ -165,7 +166,7 @@ export async function PATCH(
       campaign,
     });
   } catch (error) {
-    console.error('Error updating campaign:', error);
+    logger.error('Error updating campaign', error);
     return NextResponse.json(
       { error: 'Erro ao atualizar campanha' },
       { status: 500 }
@@ -181,11 +182,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth();
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    }
+    // Autenticação + Rate Limiting (20 req/min)
+    const result = await withAuthAndRateLimit(request, 'api');
+    if (result instanceof NextResponse) return result;
+    const { user } = result;
 
     const { id } = await params;
 
@@ -193,7 +193,7 @@ export async function DELETE(
     const existing = await prisma.campaign.findFirst({
       where: {
         id,
-        userId: session.user.id,
+        userId: user.id,
       },
     });
 
@@ -219,11 +219,11 @@ export async function DELETE(
 
         if (!metaResponse.ok) {
           const errorData = await metaResponse.json().catch(() => ({}));
-          console.error('Erro ao arquivar na Meta API:', errorData);
+          logger.error('Erro ao arquivar na Meta API', null, { errorData });
           // Continuar mesmo se falhar na Meta, arquivar localmente
         }
       } catch (error) {
-        console.error('Erro ao chamar Meta API para arquivar:', error);
+        logger.error('Erro ao chamar Meta API para arquivar', error);
         // Continuar mesmo se falhar na Meta, arquivar localmente
       }
     }
@@ -239,7 +239,7 @@ export async function DELETE(
       message: 'Campanha arquivada com sucesso!'
     });
   } catch (error) {
-    console.error('Error deleting campaign:', error);
+    logger.error('Error deleting campaign', error);
     return NextResponse.json(
       { error: 'Erro ao arquivar campanha' },
       { status: 500 }

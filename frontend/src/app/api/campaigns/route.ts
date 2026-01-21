@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { rateLimiters } from '@/lib/rate-limit';
+import {
+  createCampaignSchema,
+  getCampaignsQuerySchema,
+  formatZodError
+} from '@/lib/validation';
+import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 /**
  * GET /api/campaigns - Lista todas as campanhas
@@ -14,16 +22,45 @@ import { prisma } from '@/lib/db';
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
+    // Rate limiting: 20 requests per minute
+    const rateLimit = rateLimiters.api.limit(session.user.id);
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { error: 'Muitas requisições. Aguarde alguns segundos.', retry_after: rateLimit.reset },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': String(rateLimit.limit),
+            'X-RateLimit-Remaining': String(rateLimit.remaining),
+            'Retry-After': String(rateLimit.reset),
+          },
+        }
+      );
+    }
+
     const searchParams = request.nextUrl.searchParams;
-    const status = searchParams.get('status');
-    const search = searchParams.get('search');
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
+
+    // Validar query params (converter null para undefined)
+    const queryValidation = getCampaignsQuerySchema.safeParse({
+      status: searchParams.get('status') || undefined,
+      search: searchParams.get('search') || undefined,
+      limit: searchParams.get('limit') || undefined,
+      offset: searchParams.get('offset') || undefined,
+    });
+
+    if (!queryValidation.success) {
+      return NextResponse.json(
+        formatZodError(queryValidation.error),
+        { status: 400 }
+      );
+    }
+
+    const { status, search, limit, offset } = queryValidation.data;
 
     // Construir filtro
     const where: {
@@ -45,7 +82,7 @@ export async function GET(request: NextRequest) {
       where.name = { contains: search, mode: 'insensitive' };
     }
 
-    console.log('Buscando campanhas com filtro:', where);
+    logger.info('Buscando campanhas', { userId: session.user.id, filters: { status, search } });
     
     // Buscar campanhas com métricas
     let campaigns, total;
@@ -68,27 +105,33 @@ export async function GET(request: NextRequest) {
         }),
         prisma.campaign.count({ where }),
       ]);
-      console.log(`Encontradas ${campaigns.length} campanhas de ${total} total`);
+      logger.info('Campanhas encontradas', { count: campaigns.length, total });
     } catch (dbError) {
-      console.error('Erro ao buscar no banco de dados:', dbError);
+      logger.error('Erro ao buscar no banco de dados', dbError);
       throw dbError;
     }
 
     // Calcular métricas agregadas para cada campanha
     const campaignsWithMetrics = campaigns.map((campaign) => {
-      const totals = campaign.metrics.reduce(
+      // Garantir que metrics é um array (fallback para array vazio)
+      const metrics = Array.isArray(campaign.metrics) ? campaign.metrics : [];
+
+      const totals = metrics.reduce(
         (acc, m) => ({
-          spend: acc.spend + m.spend,
-          impressions: acc.impressions + m.impressions,
-          clicks: acc.clicks + m.clicks,
-          conversions: acc.conversions + m.conversions,
+          spend: acc.spend + (m.spend || 0),
+          impressions: acc.impressions + (m.impressions || 0),
+          clicks: acc.clicks + (m.clicks || 0),
+          conversions: acc.conversions + (m.conversions || 0),
         }),
         { spend: 0, impressions: 0, clicks: 0, conversions: 0 }
       );
 
-      const ctr = totals.impressions > 0 
-        ? (totals.clicks / totals.impressions) * 100 
+      const ctr = totals.impressions > 0
+        ? (totals.clicks / totals.impressions) * 100
         : 0;
+
+      // Garantir que adSets é um array
+      const adSets = Array.isArray(campaign.adSets) ? campaign.adSets : [];
 
       return {
         id: campaign.id,
@@ -98,7 +141,7 @@ export async function GET(request: NextRequest) {
         status: campaign.status,
         dailyBudget: campaign.dailyBudget,
         lifetimeBudget: campaign.lifetimeBudget,
-        adSetsCount: campaign.adSets.length,
+        adSetsCount: adSets.length,
         spend: Math.round(totals.spend * 100) / 100,
         impressions: totals.impressions,
         clicks: totals.clicks,
@@ -109,9 +152,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    console.log('Retornando campanhas formatadas:', campaignsWithMetrics.length);
-    
-    return NextResponse.json({ 
+    return NextResponse.json({
       campaigns: campaignsWithMetrics,
       pagination: {
         total,
@@ -121,23 +162,13 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching campaigns:', error);
+    logger.error('Error fetching campaigns', error);
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    
-    // Log completo do erro para debug
-    console.error('Error details:', {
-      message: errorMessage,
-      stack: errorStack,
-      error: error,
-    });
-    
+
     return NextResponse.json(
-      { 
+      {
         error: 'Erro ao buscar campanhas',
         details: errorMessage,
-        // Não incluir stack em produção
-        ...(process.env.NODE_ENV === 'development' && { stack: errorStack }),
       },
       { status: 500 }
     );
@@ -150,28 +181,39 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
-    
+
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
+    // Rate limiting: 20 requests per minute
+    const rateLimit = rateLimiters.api.limit(session.user.id);
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { error: 'Muitas requisições. Aguarde alguns segundos.', retry_after: rateLimit.reset },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': String(rateLimit.limit),
+            'X-RateLimit-Remaining': String(rateLimit.remaining),
+            'Retry-After': String(rateLimit.reset),
+          },
+        }
+      );
+    }
+
     const body = await request.json();
-    const { campaign, adSet, ad } = body;
 
-    // Validate required fields
-    if (!campaign?.name || !campaign?.objective) {
+    // Validar input com Zod
+    const validation = createCampaignSchema.safeParse(body);
+    if (!validation.success) {
       return NextResponse.json(
-        { error: 'Nome e objetivo da campanha são obrigatórios' },
+        formatZodError(validation.error),
         { status: 400 }
       );
     }
 
-    if (!adSet?.name || !adSet?.dailyBudget) {
-      return NextResponse.json(
-        { error: 'Nome e orçamento do conjunto são obrigatórios' },
-        { status: 400 }
-      );
-    }
+    const { campaign, adSet, ad } = validation.data;
 
     // Criar campanha na Meta API via backend
     const backendUrl = process.env.AGNO_API_URL || 'http://localhost:8000';
@@ -202,16 +244,16 @@ export async function POST(request: NextRequest) {
         if (metaCampaignData.success) {
           metaCampaignId = metaCampaignData.campaign_id;
         } else {
-          console.error('Erro ao criar campanha na Meta:', metaCampaignData.error);
+          logger.error('Erro ao criar campanha na Meta', null, { error: metaCampaignData.error });
           // Continuar mesmo se falhar, criar localmente
         }
       } else {
         const errorData = await metaCampaignResponse.json().catch(() => ({}));
-        console.error('Erro HTTP ao criar campanha na Meta:', errorData);
+        logger.error('Erro HTTP ao criar campanha na Meta', null, { statusCode: metaCampaignResponse.status });
         // Continuar mesmo se falhar, criar localmente
       }
     } catch (error) {
-      console.error('Erro ao chamar backend para criar campanha:', error);
+      logger.error('Erro ao chamar backend para criar campanha', error);
       // Continuar mesmo se falhar, criar localmente
     }
 
@@ -285,7 +327,7 @@ export async function POST(request: NextRequest) {
       message: 'Campanha criada com sucesso!' 
     }, { status: 201 });
   } catch (error) {
-    console.error('Error creating campaign:', error);
+    logger.error('Error creating campaign', error);
     return NextResponse.json(
       { error: 'Erro ao criar campanha' },
       { status: 500 }
